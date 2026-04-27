@@ -23,7 +23,14 @@
 #   bash bin/run-taiji.sh runs/<name> --no-sandbox          # bypass the wrapper entirely
 #                                                           # (debugging only)
 #
-# Env vars: THREADS=N (default 4), PARALLEL=N (default 1),
+# Executor flags (forwarded to taiji-runner):
+#   --executor {auto|local|slurm}    auto = slurm if sbatch on PATH else local
+#   --max-parallel N                 SLURM array concurrency cap (default 10)
+#   --slurm-mem-gb N                 SLURM per-task memory (default 30)
+#   --slurm-time HH:MM:SS            SLURM per-task time limit (default 24:00:00)
+#   --no-wait                        SLURM only: submit + return; don't poll squeue
+#
+# Env vars: THREADS=N (default 4), PARALLEL=N (default 1 local / 10 slurm),
 #           TAIJI_STRICT_SANDBOX=1 (same as --strict-sandbox)
 #
 # Exit codes: 0 ok, 2 bad args, 3 missing dep, 4 preflight failed,
@@ -56,6 +63,11 @@ while [[ $# -gt 0 ]]; do
     --samples)            SAMPLES="$2"; shift 2 ;;
     --threads)            EXTRA_RUNNER_ARGS+=(--threads "$2"); shift 2 ;;
     --parallel)           EXTRA_RUNNER_ARGS+=(--parallel "$2"); shift 2 ;;
+    --executor)           EXTRA_RUNNER_ARGS+=(--executor "$2"); shift 2 ;;
+    --max-parallel)       EXTRA_RUNNER_ARGS+=(--max-parallel "$2"); shift 2 ;;
+    --slurm-mem-gb)       EXTRA_RUNNER_ARGS+=(--slurm-mem-gb "$2"); shift 2 ;;
+    --slurm-time)         EXTRA_RUNNER_ARGS+=(--slurm-time "$2"); shift 2 ;;
+    --no-wait)            EXTRA_RUNNER_ARGS+=(--no-wait); shift ;;
     --continue-on-error)  EXTRA_RUNNER_ARGS+=(--continue-on-error); shift ;;
     --strict-sandbox)     STRICT_SANDBOX=1; shift ;;
     --no-sandbox)         NO_SANDBOX=1; shift ;;

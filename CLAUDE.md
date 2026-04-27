@@ -213,6 +213,8 @@ Output/Partial/<sample>_output/
 
 **Composition with `bin/run-taiji.sh`:** the shell wrapper at `bin/run-taiji.sh` is a thin orchestrator over this skill — it picks the binary by OS, regenerates the xlsx, runs preflight, starts/finalizes the workflow log, and delegates per-sample to `taiji-runner`. Users who want only the per-sample machinery can call `python skills/taiji-runner/scripts/run_taiji.py` directly.
 
+**Executor auto-detection:** `--executor auto` (default) picks `slurm` when `sbatch` is on PATH, else `local`. SLURM mode materializes `taiji_array.sbatch` from `skills/taiji-runner/templates/taiji_array.sbatch.template`, submits with `sbatch -a 1-N%MAX` (default MAX=10 — matches the user's "10 max parallel" preference), polls `squeue` until the array completes, then validates outputs the same way as local mode (count `GeneRanks.tsv` per sample). Async mode via `--no-wait` returns the job ID immediately. Local mode stays sequential by default (`--parallel 1`) for memory safety; SLURM mode defaults to `--parallel 10`.
+
 ## Skill composition (end-to-end pipeline)
 
 ```

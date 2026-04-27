@@ -63,6 +63,8 @@ except ImportError:
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+TEMPLATE_DIR = SCRIPT_DIR.parent / "templates"
+SBATCH_TEMPLATE = TEMPLATE_DIR / "taiji_array.sbatch.template"
 
 
 # ---------------------------------------------------------------------------
@@ -292,6 +294,128 @@ def invoke_taiji(result: SampleResult, binary: Path, threads: int,
     return result
 
 
+# ---------------------------------------------------------------------------
+# Executor: local (current behavior) vs SLURM (array job)
+# ---------------------------------------------------------------------------
+
+
+def detect_executor(user_choice: str) -> str:
+    """Resolve --executor=auto into 'slurm' or 'local'. 'auto' picks SLURM
+    when `sbatch` is on PATH, else local. Explicit choices are honored
+    strictly (no fallback)."""
+    if user_choice in ("local", "slurm"):
+        return user_choice
+    return "slurm" if shutil.which("sbatch") else "local"
+
+
+def _slurm_submit_array(results: list[SampleResult], binary: Path,
+                        threads: int, max_parallel: int,
+                        log_dir: Path, run_dir: Path,
+                        mem_gb: int = 30, time_limit: str = "24:00:00",
+                        wait: bool = True,
+                        log=None) -> list[SampleResult]:
+    """Materialize taiji_array.sbatch from template, submit with
+    `sbatch -a 1-N%MAX_PARALLEL`, optionally wait for completion, then
+    populate per-sample SampleResult fields by inspecting outputs."""
+    if not SBATCH_TEMPLATE.exists():
+        raise SystemExit(f"sbatch template missing: {SBATCH_TEMPLATE}")
+    if shutil.which("sbatch") is None:
+        raise SystemExit("[taiji-runner] --executor slurm requires `sbatch` on PATH")
+
+    log_dir.mkdir(parents=True, exist_ok=True)
+    config_list = run_dir / "taiji_config_files.txt"
+    if not config_list.exists():
+        raise SystemExit(f"[taiji-runner] config list missing: {config_list}")
+
+    # Materialize the sbatch script with literal substitutions.
+    job_name = f"taiji-{run_dir.name}"
+    template = SBATCH_TEMPLATE.read_text()
+    script_text = (template
+        .replace("__JOB_NAME__",      job_name)
+        .replace("__LOG_DIR__",       str(log_dir))
+        .replace("__CPUS_PER_TASK__", str(threads))
+        .replace("__MEM_GB__",        str(mem_gb))
+        .replace("__TIME_LIMIT__",    time_limit)
+        .replace("__TAIJI_BINARY__",  str(binary))
+    )
+    sbatch_path = run_dir / "taiji_array.sbatch"
+    sbatch_path.write_text(script_text)
+    sbatch_path.chmod(0o755)
+    print(f"[taiji-runner] wrote {sbatch_path}", file=sys.stderr)
+
+    # Submit.
+    n = len(results)
+    cap = max(1, min(max_parallel, n))
+    array_spec = f"1-{n}%{cap}"
+    cmd = ["sbatch", "--parsable", "-a", array_spec,
+           str(sbatch_path), str(config_list)]
+    print(f"[taiji-runner] $ {' '.join(cmd)}", file=sys.stderr)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    if proc.returncode != 0:
+        print(f"[taiji-runner] sbatch failed (exit {proc.returncode})",
+              file=sys.stderr)
+        print(f"  stdout: {proc.stdout.strip()}", file=sys.stderr)
+        print(f"  stderr: {proc.stderr.strip()}", file=sys.stderr)
+        for r in results:
+            r.error = "sbatch failed"
+        return results
+
+    # `sbatch --parsable` returns just the job ID (or "<jobid>;<cluster>").
+    job_id = proc.stdout.strip().split(";")[0]
+    print(f"[taiji-runner] submitted SLURM array job {job_id} "
+          f"({n} tasks, max {cap} concurrent)", file=sys.stderr)
+
+    if not wait:
+        # Async mode: don't block. SampleResults are unpopulated; user is
+        # expected to re-run the runner with --validate-only later, or
+        # poll the workflow log.
+        for r in results:
+            r.error = (f"submitted async (job {job_id}); rerun with "
+                       "--validate-only after `squeue -j {job_id}` is empty")
+        return results
+
+    # Sync mode: poll squeue until the job is gone.
+    print(f"[taiji-runner] waiting on job {job_id} (Ctrl-C is safe; SLURM keeps running)...",
+          file=sys.stderr)
+    poll_interval = 30
+    while True:
+        try:
+            check = subprocess.run(
+                ["squeue", "-j", job_id, "--noheader",
+                 "--format=%T %i_%a"],
+                capture_output=True, text=True, check=False, timeout=15)
+        except subprocess.TimeoutExpired:
+            time.sleep(poll_interval)
+            continue
+        if check.returncode != 0 or not check.stdout.strip():
+            break
+        running = sum(1 for _ in check.stdout.strip().splitlines())
+        print(f"[taiji-runner]   ... {running} task(s) still in queue",
+              file=sys.stderr)
+        time.sleep(poll_interval)
+
+    print(f"[taiji-runner] job {job_id} completed", file=sys.stderr)
+
+    # Validate per-sample outputs.
+    for r in results:
+        r.n_generanks, r.n_edges, r.n_nodes = _count_outputs(r.output_dir)
+        # SLURM logs land at log/slurm-<jobid>_<taskidx>.{out,err}; capture
+        # tail of stderr if present.
+        # We don't know the array index per sample without parsing — keep
+        # it simple by leaving stderr_log unset (samples can be matched by
+        # output_dir + GeneRanks presence).
+        if r.n_generanks == 0:
+            r.error = ("Taiji produced no GeneRanks.tsv on SLURM; check "
+                       f"{log_dir}/slurm-{job_id}_*.{{out,err}}")
+            r.exit_code = 1
+        else:
+            r.exit_code = 0
+
+        _log_sample(log, r)
+
+    return results
+
+
 def run_samples(results: list[SampleResult], binary: Path, threads: int,
                 log_dir: Path, parallel: int = 1,
                 continue_on_error: bool = False,
@@ -389,8 +513,22 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "from this script's grandparent's parent.")
     p.add_argument("--threads", type=int, default=4,
                    help="Threads per sample run (passed as +RTS -N<n>).")
-    p.add_argument("--parallel", type=int, default=1,
-                   help="Samples to run concurrently. Each consumes <threads> cores.")
+    p.add_argument("--parallel", type=int, default=None,
+                   help="Samples to run concurrently. Default: 1 for local "
+                        "executor, 10 for SLURM (each sample uses <threads> cores).")
+    p.add_argument("--executor", choices=["auto", "local", "slurm"],
+                   default="auto",
+                   help="Where to run Taiji. 'auto' picks slurm when sbatch is "
+                        "on PATH, else local.")
+    p.add_argument("--max-parallel", type=int, default=10,
+                   help="SLURM array concurrency cap (sbatch -a 1-N%%MAX). "
+                        "Default 10. Ignored under --executor local (use --parallel).")
+    p.add_argument("--slurm-mem-gb", type=int, default=30,
+                   help="Per-task memory request for SLURM (GB). Default 30.")
+    p.add_argument("--slurm-time", default="24:00:00",
+                   help="Per-task time limit for SLURM. Default 24:00:00.")
+    p.add_argument("--no-wait", action="store_true",
+                   help="SLURM only: submit and return immediately; don't poll squeue.")
     p.add_argument("--samples", default=None,
                    help="Comma-separated subset of sample names to run.")
     p.add_argument("--prepare-only", action="store_true",
@@ -468,13 +606,36 @@ def main(argv: list[str] | None = None) -> int:
     except OSError:
         pass
 
-    # 4. Invoke per-sample.
+    # 4. Pick executor (auto-detect SLURM if available unless overridden).
+    executor = detect_executor(args.executor)
+    print(f"[taiji-runner] executor: {executor}"
+          + ("  (sbatch detected)" if executor == "slurm"
+             and args.executor == "auto" else ""),
+          file=sys.stderr)
+
+    # Default --parallel: 1 for local (memory-conservative), 10 for slurm
+    # (matches the user's ask for "max 10 in parallel").
+    if args.parallel is None:
+        args.parallel = 10 if executor == "slurm" else 1
+
     log = _attach_log(work_dir=args.run_dir)
     log_dir = args.run_dir / "log"
-    completed = run_samples(results, binary, args.threads, log_dir,
-                            parallel=args.parallel,
-                            continue_on_error=args.continue_on_error,
-                            log=log)
+
+    if executor == "slurm":
+        completed = _slurm_submit_array(
+            results, binary, args.threads,
+            max_parallel=args.max_parallel,
+            log_dir=log_dir, run_dir=args.run_dir,
+            mem_gb=args.slurm_mem_gb, time_limit=args.slurm_time,
+            wait=not args.no_wait, log=log,
+        )
+    else:
+        completed = run_samples(
+            results, binary, args.threads, log_dir,
+            parallel=min(args.parallel, args.max_parallel),
+            continue_on_error=args.continue_on_error,
+            log=log,
+        )
 
     if args.json:
         print(json.dumps({
