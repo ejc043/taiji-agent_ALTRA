@@ -9,7 +9,7 @@ mm9:
 hg38:
   fasta: /Users/eunicechoi/Documents/Claude/Projects/taiji agent/dependencies_data/hg38/genome.fa
   gtf: /Users/eunicechoi/Documents/Claude/Projects/taiji agent/dependencies_data/hg38/genes.gtf
-  hic: null    # per-sample HiC bedpe in Active sheet; no genome-default needed
+  hic: null
 hg19:
   fasta: /path/to/hg19/genome.fa
   gtf: /path/to/hg19/genes.gtf

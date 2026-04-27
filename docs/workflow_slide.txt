@@ -1,0 +1,43 @@
+
+================================================================================================================================================
+   TAIJI  AGENT   |   bulk + single-cell RNA-seq / ATAC-seq  →  TF regulatory networks via Taiji 1.3.0
+================================================================================================================================================
+
+
+  ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐      ┌─────────────────┐
+  │    SANDBOX      │ ───▶ │     SETUP       │ ───▶ │    CLASSIFY     │ ───▶ │      RUN        │ ───▶ │    OUTPUTS      │
+  │  always-on      │      │   one-time      │      │  bulk / SC /    │      │  per-sample     │      │  TF rankings    │
+  │  exec wrapper   │      │   per machine   │      │  mixed / unkn   │      │  Taiji binary   │      │  + full audit   │
+  └────────┬────────┘      └────────┬────────┘      └────────┬────────┘      └────────┬────────┘      └────────┬────────┘
+           │                        │                        │                        │                        │
+           ▼                        ▼                        ▼                        ▼                        ▼
+
+  bin/sandbox-run.sh        bin/install.sh             bin/auto-install.sh      bin/run-taiji.sh         runs/<name>/Output/
+                              --profile <name>            --data-dir <path>        runs/<name>            Partial/<sample>/
+  Layer 1  soft                                                                                             ★ GeneRanks.tsv
+   • cwd ⊂ REPO_ROOT         profiles:                  detect-dataset-          taiji-runner                ★ GeneRanks_PValues
+   • TMPDIR=<repo>/tmp        base   ~500 MB             type                    (per-sample split)          Network/<s>/
+   • $REPO_ROOT exported      sc    +3-4 GB                │                       │                          ├ edges_combined
+                              dev    +500 MB              ▼                       ▼                          ├ edges_binding
+  Layer 2  OS-level           full   ~5 GB           ┌─ bulk ──────────┐      Input/<s>_input/                └ nodes
+  (auto when present)                                │                 │        <s>_input.tsv               ATACSeq/openChrom
+   • bwrap (Linux)           bin/postinstall.R       ├─ single-cell ──┤        <s>_config.yml                ATACSeq/TFBS/...
+   • sandbox-exec (macOS)     SeuratDisk +           │   │             │      Output/Partial/                RNASeq/expr_profile
+                              MuDataSeurat           │   ▼             │        <s>_output/                  RNASeq/<s>_quant
+  Layer 3  strict opt-in     (only when --profile    │ pseudobulk-     │                                     sciflow.db
+   • --strict-sandbox         sc or full)            │ construct       │      for each sample:
+   • --no-sandbox (debug)                            │  Seurat WNN +   │        ./binaries/taiji-<os>      runs/<name>/log/
+                             bin/install-taiji.sh    │  MACS3          │          run --config <yml>        ├ <run_id>.md
+   Threat model:              --system <os>          │   │             │          +RTS -N<threads>         ├ <run_id>.jsonl
+   "agent makes a            (downloads x86_64       │   ▼             │          cwd: <s>_output/         ├ index.jsonl
+    mistake or buggy          Taiji from GitHub)     │  manifest.tsv   │                                    └ <s>.taiji.{out,err}
+    script writes outside                            │   │             │      validation:
+    workspace"               bin/fetch-references    │   ▼             │        GeneRanks.tsv exists?    workflow-log:
+                              --genome hg38          └─▶ build-taiji-  ◀┘        else FAIL silent-fail   side-channel,
+                              --update-genomes-yml      input                                            auto-attached by
+                              (FASTA + GTF + MEME)      → taiji_input.xlsx                                every skill via
+                                                          (Active + active_metadata)                      active_run pointer
+
+================================================================================================================================================
+   VALIDATED:  RA_11  /  CHEM280 chr22  →  765 TFs ranked  |  top: SP1·SP2·SP3·PATZ1·WT1  |  4 min 44 s wall  |  Program finishes successfully
+================================================================================================================================================

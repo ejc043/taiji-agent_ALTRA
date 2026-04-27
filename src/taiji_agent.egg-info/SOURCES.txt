@@ -1,0 +1,13 @@
+LICENSE
+pyproject.toml
+src/taiji_agent/__init__.py
+src/taiji_agent/config.py
+src/taiji_agent/detect.py
+src/taiji_agent/samplesheet.py
+src/taiji_agent/validate.py
+src/taiji_agent.egg-info/PKG-INFO
+src/taiji_agent.egg-info/SOURCES.txt
+src/taiji_agent.egg-info/dependency_links.txt
+src/taiji_agent.egg-info/entry_points.txt
+src/taiji_agent.egg-info/requires.txt
+src/taiji_agent.egg-info/top_level.txt

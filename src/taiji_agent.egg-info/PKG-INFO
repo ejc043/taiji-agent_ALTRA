@@ -1,0 +1,25 @@
+Metadata-Version: 2.4
+Name: taiji-agent
+Version: 0.1.0
+Summary: Preflight validation, SLURM submission, and monitoring for Taiji (bulk + single-cell) RNA-seq/ATAC-seq runs
+Author-email: Eunice Chen <ejc043@ucsd.edu>
+License: MIT
+Keywords: taiji,rna-seq,atac-seq,hpc,slurm,bioinformatics
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: POSIX :: Linux
+Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: click>=8.1
+Requires-Dist: pydantic>=2.5
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: jinja2>=3.1
+Requires-Dist: rich>=13.7
+Provides-Extra: dev
+Requires-Dist: pytest>=7.4; extra == "dev"
+Requires-Dist: pytest-cov>=4.1; extra == "dev"
+Requires-Dist: ruff>=0.4; extra == "dev"
+Requires-Dist: mypy>=1.8; extra == "dev"
+Dynamic: license-file

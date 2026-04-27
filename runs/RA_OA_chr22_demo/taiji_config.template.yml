@@ -23,9 +23,10 @@ output_dir: [insert_output_directory_here]
 genome:     [insert_genome_filepath_here]
 
 # --- Scratch space ---
-# /tmp is fine for this small chr22 dataset (<1 GB peak); for whole-genome
-# runs point at scratch with >50 GB free.
-tmp_dir: /tmp/taiji_RA_OA_chr22
+# Kept INSIDE the workspace so all Taiji writes are workspace-bounded
+# (sandbox-run.sh enforces this). For whole-genome runs you may want >50 GB
+# free under <repo>/tmp/; otherwise switch to a scratch path explicitly.
+tmp_dir: ${REPO_ROOT}/tmp/RA_OA_chr22_demo
 
 # --- Single-value reference data (shared across samples) ------------------
 annotation: ${REPO_ROOT}/dependencies_data/hg38/genes.gtf

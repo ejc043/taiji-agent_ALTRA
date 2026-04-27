@@ -1,0 +1,2 @@
+[console_scripts]
+taiji-agent = taiji_agent.cli:main

@@ -29,7 +29,8 @@
 #   bash bin/install.sh --env-name my-env                  # non-default env name
 #   bash bin/install.sh --skip-taiji                       # env-only
 #   bash bin/install.sh --use-lockfile                     # install from conda-lock
-#   bash bin/install.sh --solver mamba|micromamba|conda    # default: micromamba
+#   bash bin/install.sh --solver mamba|micromamba|conda    # default: auto-detect
+#                                                          # (prefers micromamba > mamba > conda)
 #
 # Exit codes:
 #   0 ok
@@ -52,7 +53,7 @@ PROFILE="base"
 SKIP_TAIJI=0
 SKIP_R=""    # tri-state: "" auto-decide, 1 force-skip, 0 force-run
 USE_LOCKFILE=0
-SOLVER="micromamba"
+SOLVER=""    # empty means "auto-detect: prefer micromamba, then mamba, then conda"
 
 usage() { sed -n '2,40p' "$0"; exit "${1:-0}"; }
 
@@ -91,13 +92,34 @@ if [[ "$SKIP_R" == "1" ]]; then
 fi
 
 # ---- Resolve solver ----
-if ! command -v "$SOLVER" >/dev/null 2>&1; then
-  echo "[install] solver '$SOLVER' not on PATH." >&2
-  echo "[install] install micromamba: https://mamba.readthedocs.io/en/latest/micromamba-installation.html" >&2
-  echo "[install] or pass --solver mamba|conda if you have one of those." >&2
-  exit 2
+# When the user didn't pass --solver explicitly, auto-detect in order:
+# micromamba (fastest) -> mamba -> conda (slowest, but ~always available).
+# When the user did pass --solver, honor it strictly (no fallback).
+if [[ -z "$SOLVER" ]]; then
+  for candidate in micromamba mamba conda; do
+    if command -v "$candidate" >/dev/null 2>&1; then
+      SOLVER="$candidate"
+      break
+    fi
+  done
+  if [[ -z "$SOLVER" ]]; then
+    echo "[install] no conda solver found on PATH (tried: micromamba, mamba, conda)" >&2
+    echo "[install] install one of:" >&2
+    echo "    micromamba (fastest):  https://mamba.readthedocs.io/en/latest/micromamba-installation.html" >&2
+    echo "    miniforge/mamba:       https://github.com/conda-forge/miniforge" >&2
+    echo "    miniconda:             https://docs.conda.io/en/latest/miniconda.html" >&2
+    exit 2
+  fi
+  echo "[install] auto-detected solver: $SOLVER ($(command -v "$SOLVER"))"
+else
+  if ! command -v "$SOLVER" >/dev/null 2>&1; then
+    echo "[install] solver '$SOLVER' (passed via --solver) not on PATH." >&2
+    echo "[install] either install it, or omit --solver to auto-detect from " >&2
+    echo "[install] micromamba | mamba | conda." >&2
+    exit 2
+  fi
+  echo "[install] using solver: $SOLVER ($(command -v "$SOLVER"))"
 fi
-echo "[install] using solver: $SOLVER ($(command -v "$SOLVER"))"
 
 # ---- Map profile -> env-file path ----
 profile_file() {
@@ -154,7 +176,13 @@ else
 fi
 
 # ---- Activate-then-run helper ----
-RUN=("$SOLVER" run -n "$ENV_NAME")
+# `conda run` historically buffers stdout/stderr; --no-capture-output fixes
+# that. micromamba/mamba run don't have the issue.
+if [[ "$SOLVER" == "conda" ]]; then
+  RUN=("$SOLVER" run --no-capture-output -n "$ENV_NAME")
+else
+  RUN=("$SOLVER" run -n "$ENV_NAME")
+fi
 
 # ---- R postinstall (only when sc profile is in scope) ----
 if [[ "$RUN_POSTINSTALL_R" -eq 1 ]]; then

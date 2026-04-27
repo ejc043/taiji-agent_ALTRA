@@ -17,8 +17,14 @@
 #   bash bin/run-taiji.sh runs/<name> --skip-preflight      # for re-runs
 #   bash bin/run-taiji.sh runs/<name> --dry-run             # plan only
 #   bash bin/run-taiji.sh runs/<name> --binary <abs path>   # override binary
+#   bash bin/run-taiji.sh runs/<name> --strict-sandbox      # require OS-level sandbox
+#                                                           # (bwrap on Linux,
+#                                                           #  sandbox-exec on macOS)
+#   bash bin/run-taiji.sh runs/<name> --no-sandbox          # bypass the wrapper entirely
+#                                                           # (debugging only)
 #
-# Env vars: THREADS=N (default 4), PARALLEL=N (default 1)
+# Env vars: THREADS=N (default 4), PARALLEL=N (default 1),
+#           TAIJI_STRICT_SANDBOX=1 (same as --strict-sandbox)
 #
 # Exit codes: 0 ok, 2 bad args, 3 missing dep, 4 preflight failed,
 #             5 one or more samples failed.
@@ -38,6 +44,8 @@ PREPARE_ONLY=0
 BINARY_OVERRIDE=""
 SAMPLES=""
 EXTRA_RUNNER_ARGS=()
+STRICT_SANDBOX=0
+NO_SANDBOX=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -49,6 +57,8 @@ while [[ $# -gt 0 ]]; do
     --threads)            EXTRA_RUNNER_ARGS+=(--threads "$2"); shift 2 ;;
     --parallel)           EXTRA_RUNNER_ARGS+=(--parallel "$2"); shift 2 ;;
     --continue-on-error)  EXTRA_RUNNER_ARGS+=(--continue-on-error); shift ;;
+    --strict-sandbox)     STRICT_SANDBOX=1; shift ;;
+    --no-sandbox)         NO_SANDBOX=1; shift ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -183,11 +193,23 @@ RUNNER_ARGS=(
 [[ "$DRY_RUN"      -eq 1 ]]    && RUNNER_ARGS+=(--prepare-only)   # dry-run -> prepare-only
 RUNNER_ARGS+=("${EXTRA_RUNNER_ARGS[@]}")
 
+# Wrap the runner in sandbox-run.sh so all Taiji writes stay in the workspace
+# and TMPDIR points at REPO_ROOT/tmp (instead of /tmp). --no-sandbox bypasses
+# the wrapper entirely (e.g. for debugging). --strict-sandbox refuses to run
+# unless an OS-level sandbox (bwrap on Linux, sandbox-exec on macOS) is
+# available.
+SANDBOX_PREFIX=()
+if [[ "$NO_SANDBOX" -eq 0 ]]; then
+  SANDBOX_PREFIX=("$REPO_ROOT/bin/sandbox-run.sh")
+  [[ "$STRICT_SANDBOX" -eq 1 ]] && SANDBOX_PREFIX+=(--strict)
+  SANDBOX_PREFIX+=(--)
+fi
+
 echo
-echo "[run-taiji] command: $PYTHON $RUNNER_PY ${RUNNER_ARGS[*]}"
+echo "[run-taiji] command: ${SANDBOX_PREFIX[*]:-} $PYTHON $RUNNER_PY ${RUNNER_ARGS[*]}"
 START_TS=$SECONDS
 RUNNER_EXIT=0
-"$PYTHON" "$RUNNER_PY" "${RUNNER_ARGS[@]}" || RUNNER_EXIT=$?
+"${SANDBOX_PREFIX[@]}" "$PYTHON" "$RUNNER_PY" "${RUNNER_ARGS[@]}" || RUNNER_EXIT=$?
 WALL_DURATION=$((SECONDS - START_TS))
 
 echo

@@ -340,6 +340,23 @@ Persistent memory at `/sessions/quirky-festive-mayer/mnt/.auto-memory/`. Key fil
 
 Read these before making non-trivial decisions about extending the project.
 
+## Sandbox model (workspace-bound execution)
+
+Every command the agent invokes runs through `bin/sandbox-run.sh`, a layered wrapper that ensures all writes stay inside the workspace folder. Three tiers, applied in order:
+
+1. **Soft (always)**: cwd must be inside `REPO_ROOT`; `TMPDIR` is pinned to `<REPO_ROOT>/tmp/sandbox-<pid>`; child sees `$REPO_ROOT` for use in path scoping. Refuses to run if cwd is outside. Catches accidents (typos, agent mistakes) without OS support.
+2. **OS-level (auto when available)**: `bwrap` on Linux or `sandbox-exec` on macOS. Filesystem writes are restricted to `REPO_ROOT` + workspace TMPDIR. Network is blocked unless `--allow-net` is passed. Engages automatically when the tool is present.
+3. **Strict mode (opt-in)**: `--strict-sandbox` flag (or `TAIJI_STRICT_SANDBOX=1`) refuses to run unless an OS-level sandbox tool is present. Use on shared infrastructure where soft enforcement isn't enough.
+
+Practical implications:
+
+- `bin/run-taiji.sh` already wraps every Taiji invocation with `sandbox-run.sh`. Soft mode is the default; strict mode by env var or flag.
+- `taiji_config.template.yml` uses `tmp_dir: ${REPO_ROOT}/tmp/<run_name>` instead of `/tmp/...`, so even Taiji's scratch I/O stays in the workspace and gets cleaned up alongside the run.
+- The Taiji binary itself is x86_64 and the agent always shells out to it through the wrapper, so binary execution is workspace-bounded by inheritance.
+- `--no-sandbox` exists for debugging; otherwise the wrapper is on by default.
+
+The threat model this addresses is "agent makes a mistake or a buggy script writes outside the workspace," not "malicious code escapes the sandbox." For the latter, layer Docker/Apptainer on top — out of scope for this repo's design (no container runtime assumed on Mac/SLURM).
+
 ## Architectural constraints (load-bearing)
 
 - **The Taiji binary cannot be executed from this sandbox.** Sandbox is aarch64; binaries are x86_64 ELF (Linux variants) or Mach-O (macOS). No qemu-user / box64 / fex-emu emulator is installed, and `sudo apt install` is blocked by `no_new_privileges`. The kernel rejects with `Exec format error`. Practical consequence: every "run Taiji" step is either Mac-side (Eunice's machine) or SLURM-side. The agent's role from the sandbox is strictly **prepare inputs + validate outputs**.

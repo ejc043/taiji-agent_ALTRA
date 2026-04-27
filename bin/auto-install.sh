@@ -55,12 +55,24 @@ PYTHON="${PYTHON:-python3}"
 command -v "$PYTHON" >/dev/null 2>&1 || { echo "ERROR: $PYTHON not on PATH" >&2; exit 3; }
 
 # ---- Run detect-dataset-type ----
+# Capture stderr to a temp file so any error from detect.py is visible if
+# stdout comes back empty (otherwise `2>/dev/null` would hide the real cause).
 echo "[auto-install] classifying $DATA_DIR ..."
-DETECT_JSON=$("$PYTHON" "$DETECT_PY" "$DATA_DIR" --format json 2>/dev/null || true)
+DETECT_STDERR=$(mktemp)
+DETECT_JSON=$("$PYTHON" "$DETECT_PY" "$DATA_DIR" --format json 2>"$DETECT_STDERR" || true)
 if [[ -z "$DETECT_JSON" ]]; then
   echo "ERROR: detect-dataset-type returned no output" >&2
+  if [[ -s "$DETECT_STDERR" ]]; then
+    echo "  stderr from detect:" >&2
+    sed 's/^/    /' "$DETECT_STDERR" >&2
+  else
+    echo "  (no stderr either — try running detect.py manually:" >&2
+    echo "     $PYTHON $DETECT_PY $DATA_DIR --format json)" >&2
+  fi
+  rm -f "$DETECT_STDERR"
   exit 3
 fi
+rm -f "$DETECT_STDERR"
 
 CLASSIFICATION=$("$PYTHON" -c "import json,sys; print(json.loads(sys.stdin.read()).get('classification','unknown'))" <<<"$DETECT_JSON")
 SC_MODALITY=$("$PYTHON"   -c "import json,sys; print(json.loads(sys.stdin.read()).get('sc_modality') or '')"      <<<"$DETECT_JSON")
