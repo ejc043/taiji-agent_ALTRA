@@ -1,0 +1,50 @@
+# Runtime dependencies for the pseudobulk-construct skill.
+# Read by bin/doctor.sh to verify the install before a run.
+
+skill: pseudobulk-construct
+purpose: Bridge single-cell objects (.rds/.h5ad/.h5mu) to bulk-Taiji inputs
+         via Seurat WNN clustering + per-cluster MACS3/MACS2 peak calling.
+
+binaries:
+  - {name: Rscript,  min_version: "4.2",   purpose: "R interpreter"}
+  - {name: gunzip,                          purpose: "decompress fragments.tsv.gz"}
+  - {name: awk,                             purpose: "filter fragments by barcode"}
+  # Peak caller: either macs3 OR macs2 satisfies this — the orchestrator
+  # auto-detects. doctor.sh handles the OR logic.
+  - {name: macs3,    min_version: "3.0",   purpose: "per-cluster peak calling",
+     alternatives: ["macs2"]}
+  # Optional but useful for re-indexing fragments files.
+  - {name: tabix,    optional: true,       purpose: "fragments.tsv.gz indexing"}
+  - {name: bgzip,    optional: true,       purpose: "fragments.tsv.gz indexing"}
+
+python_packages:
+  - {name: python,    min_version: "3.10"}
+  - {name: pyyaml,    import_name: yaml, optional: true,  min_version: "6.0"}  # for future config-parsing
+                                                                               # extensions; doctor.sh also uses it
+
+r_packages:
+  - {name: Seurat,         min_version: "5.0",  source: "bioconda"}
+  - {name: Signac,         min_version: "1.12", source: "bioconda"}
+  - {name: Matrix,                              source: "conda"}
+  - {name: GenomicRanges,                       source: "bioconda"}
+  - {name: dplyr,                               source: "conda"}
+  - {name: optparse,                            source: "conda"}
+  - {name: jsonlite,                            source: "conda"}
+  - {name: SeuratDisk,     source: "github",   repo: "mojaveazure/seurat-disk",
+     required_for: ".h5ad input"}
+  - {name: MuDataSeurat,   source: "github",   repo: "PMBio/MuDataSeurat",
+     required_for: ".h5mu input"}
+
+data:
+  - description: "fragments.tsv.gz with barcoded ATAC fragments"
+    required_for: ATAC peak calling
+    note: "supplied via --fragments at runtime; not bundled with the skill"
+
+notes: |
+  R-side validation (Seurat v5 / Signac >= 1.12 API) has not been run
+  end-to-end in this repo's CI yet — first-run validation should happen on
+  the user's SLURM env with `bash bin/doctor.sh` and a small test object.
+
+  Soft-imports detect-dataset-type for the SC-modality auto-routing logic.
+  If detect-dataset-type isn't installed, the orchestrator skips the gate
+  and prints a warning.

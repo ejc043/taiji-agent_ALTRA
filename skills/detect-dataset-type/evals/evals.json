@@ -1,0 +1,26 @@
+{
+  "skill_name": "detect-dataset-type",
+  "evals": [
+    {
+      "id": 0,
+      "name": "bulk-directory",
+      "prompt": "I have a dataset directory at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10. Classify it as bulk or single-cell, and write a JSON report to the output directory I'll specify (filename: detect_result.json) with at minimum these fields: classification (one of 'bulk', 'single-cell', 'mixed', 'unknown'), bulk_files (dict of extension -> list of paths found), sc_files (dict of extension -> list of paths), and recommendation (a short string saying whether this directory is usable with build-taiji-input and why).",
+      "expected_output": "detect_result.json with classification='bulk', bulk_files containing .tsv / .narrowpeak / .bedpe entries (case-insensitive), sc_files empty, recommendation indicating the directory IS usable with build-taiji-input.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "single-cell-h5ad",
+      "prompt": "I have a dataset directory at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/sc_h5ad. Classify it and write a JSON report to the output directory I'll specify (filename: detect_result.json) with fields: classification (one of 'bulk', 'single-cell', 'mixed', 'unknown'), bulk_files, sc_files, and recommendation. The recommendation should explicitly tell me whether I can use build-taiji-input on this data.",
+      "expected_output": "detect_result.json with classification='single-cell', sc_files containing .h5ad entries, bulk_files empty, recommendation explicitly saying NOT to use build-taiji-input (because it's single-cell data).",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "mixed-strict-refusal",
+      "prompt": "Classify the directory at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/mixed. Then decide whether it's safe to proceed to build-taiji-input, and write your conclusion to the output directory I'll specify (filename: detect_result.json) with fields: classification, bulk_files, sc_files, recommendation (string), and safe_for_bulk_taiji (boolean).",
+      "expected_output": "detect_result.json with classification='mixed', both bulk_files AND sc_files populated (.tsv+.narrowpeak on bulk side, .h5ad on SC side), recommendation refusing to proceed and explaining the mixed state, safe_for_bulk_taiji=false.",
+      "files": []
+    }
+  ]
+}

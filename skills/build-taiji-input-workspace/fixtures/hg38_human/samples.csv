@@ -1,0 +1,5 @@
+group,cohort,rep,hic_path
+CD8_naive_rep1,naive,1,
+CD8_naive_rep2,naive,1,
+CD8_effector_rep1,effector,1,
+CD8_effector_rep2,effector,1,

@@ -1,0 +1,18 @@
+{
+  "eval_id": 0,
+  "eval_name": "happy-path-mm10",
+  "prompt": "I've got processed bulk RNA-seq and ATAC-seq files for 4 mouse samples in /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/happy_path_mm10/data/ and a samples list at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/happy_path_mm10/samples.csv. The reference genome paths are in /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/happy_path_mm10/genomes.yml. Please build me the bulk Taiji input xlsx (the one with Active and active_metadata sheets) for mm10. Save it as taiji.input.xlsx in the output directory I'll specify.",
+  "assertions": [
+    "xlsx file exists at expected path",
+    "sheet names are exactly 'Active' and 'active_metadata'",
+    "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+    "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+    "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+    "RNA-seq rows have tags='GeneQuant'",
+    "ATAC-seq rows have format='NarrowPeak'",
+    "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+    "Active has 4 distinct groups",
+    "active_metadata has 4 rows (one per group)",
+    "both KO and WT cohorts present"
+  ]
+}

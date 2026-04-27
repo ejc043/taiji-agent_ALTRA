@@ -1,0 +1,39 @@
+# Runtime dependencies for the taiji-runner skill.
+# Read by bin/doctor.sh.
+
+skill: taiji-runner
+purpose: Per-sample Taiji 1.3.0 orchestrator — splits xlsx into per-sample
+         TSVs + materialized configs, invokes `taiji run` per sample,
+         captures + validates output presence per sample.
+
+binaries:
+  - {name: taiji,
+     min_version: "1.3.0",
+     optional: true,
+     purpose: "the Taiji executable; resolved via --binary or $TAIJI_BINARY",
+     alternatives: ["taiji-CentOS-x86_64", "taiji-Ubuntu-x86_64",
+                    "taiji-macOS-Catalina-10.15"]}
+
+python_packages:
+  - {name: python,    min_version: "3.10"}
+  - {name: openpyxl,  min_version: "3.1"}
+  - {name: pyyaml,    import_name: yaml, min_version: "6.0"}
+
+r_packages: []
+
+data:
+  - description: "build-taiji-input xlsx (Active + active_metadata sheets)"
+    required_for: input
+    note: "supplied via --xlsx at runtime"
+  - description: "per-sample formula config template (3 placeholders)"
+    required_for: input
+    note: "supplied via --template at runtime"
+
+notes: |
+  This skill never installs the Taiji binary itself; it expects the path via
+  --binary or $TAIJI_BINARY. The doctor's binary-check is `optional: true`
+  for that reason — failing the doctor would be over-strict for users who
+  haven't yet downloaded a Taiji binary or only intend to use --prepare-only.
+
+  Soft-attaches to workflow-log via the standard sibling-import pattern. Each
+  sample's run becomes a separate `taiji_run.<sample>` log entry.

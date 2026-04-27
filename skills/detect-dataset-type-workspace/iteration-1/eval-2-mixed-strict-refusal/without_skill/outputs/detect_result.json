@@ -1,0 +1,12 @@
+{
+  "classification": "mixed",
+  "bulk_files": [
+    "sample1.narrowPeak",
+    "sample1.tsv"
+  ],
+  "sc_files": [
+    "cells.h5ad"
+  ],
+  "recommendation": "Do NOT proceed to build-taiji-input. The directory contains a mix of bulk-style files (sample1.narrowPeak, sample1.tsv) and a single-cell AnnData file (cells.h5ad). Taiji's standard bulk pipeline expects homogeneous bulk RNA-seq/ATAC-seq inputs; single-cell data requires a different preprocessing path (e.g., pseudobulk aggregation or the scTaiji workflow). Additionally, all three files are 0 bytes, so content-based validation is not possible. Please separate bulk and single-cell inputs into distinct directories, confirm file contents are non-empty, and re-run detection before building Taiji input.",
+  "safe_for_bulk_taiji": false
+}

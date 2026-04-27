@@ -1,0 +1,72 @@
+{
+  "passed": true,
+  "score": "12/12",
+  "expectations": [
+    {
+      "text": "xlsx file exists at expected path",
+      "passed": true,
+      "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-1-missing-atac-nonstrict/with_skill/outputs/taiji.input.xlsx"
+    },
+    {
+      "text": "sheet names are exactly 'Active' and 'active_metadata'",
+      "passed": true,
+      "evidence": "actual sheets: ['Active', 'active_metadata']"
+    },
+    {
+      "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+      "passed": true,
+      "evidence": "actual: ['type', 'id', 'group', 'rep', 'path', 'tags', 'format', 'cohort']"
+    },
+    {
+      "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+      "passed": true,
+      "evidence": "actual: ['Submitter_ID', 'Case_ID', 'vcf_Location', 'gtf_Location']"
+    },
+    {
+      "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+      "passed": true,
+      "evidence": "actual types: ['ATAC-seq', 'HiC', 'RNA-seq']"
+    },
+    {
+      "text": "RNA-seq rows have tags='GeneQuant'",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "ATAC-seq rows have format='NarrowPeak'",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "broken sample 'D30-WT_1.spleen' NOT present in Active sheet",
+      "passed": true,
+      "evidence": "absent from Active"
+    },
+    {
+      "text": "broken sample 'D30-WT_1.spleen' NOT present in active_metadata",
+      "passed": true,
+      "evidence": "absent from metadata"
+    },
+    {
+      "text": "Active has exactly 3 distinct groups",
+      "passed": true,
+      "evidence": "groups: ['D30-KO_0.siiel', 'D30-KO_1.spleen', 'D30-WT_0.siiel']"
+    },
+    {
+      "text": "active_metadata has exactly 3 rows",
+      "passed": true,
+      "evidence": "row count: 3"
+    }
+  ],
+  "summary": {
+    "passed": 12,
+    "failed": 0,
+    "total": 12,
+    "pass_rate": 1.0
+  }
+}

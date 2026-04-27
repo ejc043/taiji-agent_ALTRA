@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "score": "8/8",
+  "expectations": [
+    {
+      "text": "detect_result.json exists at expected path",
+      "passed": true,
+      "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/iteration-1/eval-0-bulk-directory/without_skill/outputs/detect_result.json"
+    },
+    {
+      "text": "result is valid JSON",
+      "passed": true,
+      "evidence": "parsed"
+    },
+    {
+      "text": "classification field equals 'bulk'",
+      "passed": true,
+      "evidence": "classification='bulk'"
+    },
+    {
+      "text": "bulk_files includes a .tsv entry",
+      "passed": true,
+      "evidence": "bulk_exts normalized: ['.bedpe', '.narrowpeak', '.tsv', '.txt']"
+    },
+    {
+      "text": "bulk_files includes a .narrowpeak entry (case-insensitive)",
+      "passed": true,
+      "evidence": "bulk_exts normalized: ['.bedpe', '.narrowpeak', '.tsv', '.txt']"
+    },
+    {
+      "text": "bulk_files includes a .bedpe entry",
+      "passed": true,
+      "evidence": "bulk_exts normalized: ['.bedpe', '.narrowpeak', '.tsv', '.txt']"
+    },
+    {
+      "text": "sc_files is empty",
+      "passed": true,
+      "evidence": "sc_files: {}"
+    },
+    {
+      "text": "recommendation indicates build-taiji-input is usable",
+      "passed": true,
+      "evidence": "matched: ['usable']"
+    }
+  ],
+  "summary": {
+    "passed": 8,
+    "failed": 0,
+    "total": 8,
+    "pass_rate": 1.0
+  }
+}

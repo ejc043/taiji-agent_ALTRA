@@ -1,0 +1,19 @@
+{
+  "eval_id": 1,
+  "eval_name": "missing-atac-nonstrict",
+  "prompt": "Same kind of task as before but one sample is bad. Data is in /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/missing_atac/data/, samples CSV at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/missing_atac/samples.csv, genome config at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/missing_atac/genomes.yml. One of the four samples (D30-WT_1.spleen) has its RNA but is missing its narrowPeak ATAC file. I still want the xlsx built from the samples that DO have everything \u2014 just drop the broken one. mm10. Write to taiji.input.xlsx in the output directory.",
+  "assertions": [
+    "xlsx file exists at expected path",
+    "sheet names are exactly 'Active' and 'active_metadata'",
+    "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+    "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+    "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+    "RNA-seq rows have tags='GeneQuant'",
+    "ATAC-seq rows have format='NarrowPeak'",
+    "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+    "broken sample 'D30-WT_1.spleen' NOT present in Active sheet",
+    "broken sample 'D30-WT_1.spleen' NOT present in active_metadata",
+    "Active has exactly 3 distinct groups",
+    "active_metadata has exactly 3 rows"
+  ]
+}

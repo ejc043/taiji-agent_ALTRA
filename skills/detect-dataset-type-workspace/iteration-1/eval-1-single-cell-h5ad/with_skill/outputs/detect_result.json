@@ -1,0 +1,11 @@
+{
+  "classification": "single-cell",
+  "bulk_files": {},
+  "sc_files": {
+    ".h5ad": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/sc_h5ad/cd8_naive.h5ad",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/sc_h5ad/cd8_effector.h5ad"
+    ]
+  },
+  "recommendation": "Do NOT use build-taiji-input on this directory. The dataset contains only single-cell AnnData (.h5ad) files (cd8_naive.h5ad, cd8_effector.h5ad) and no bulk signatures (.tsv/.narrowPeak/.bedpe). build-taiji-input only accepts bulk RNA-seq/ATAC-seq/HiC inputs. Route this data to a single-cell Taiji workflow such as SCENIC+ or sc-Taiji instead. Note: both .h5ad files are 0 bytes per the classifier's size report, so verify the fixtures are populated before downstream use."
+}

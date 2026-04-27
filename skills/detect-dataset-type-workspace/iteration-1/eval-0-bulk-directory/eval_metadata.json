@@ -1,0 +1,15 @@
+{
+  "eval_id": 0,
+  "eval_name": "bulk-directory",
+  "prompt": "I have a dataset directory at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10. Classify it as bulk or single-cell, and write a JSON report to the output directory I'll specify (filename: detect_result.json) with at minimum these fields: classification (one of 'bulk', 'single-cell', 'mixed', 'unknown'), bulk_files (dict of extension -> list of paths found), sc_files (dict of extension -> list of paths), and recommendation (a short string saying whether this directory is usable with build-taiji-input and why).",
+  "assertions": [
+    "detect_result.json exists at expected path",
+    "result is valid JSON",
+    "classification field equals 'bulk'",
+    "bulk_files includes a .tsv entry",
+    "bulk_files includes a .narrowpeak entry (case-insensitive)",
+    "bulk_files includes a .bedpe entry",
+    "sc_files is empty",
+    "recommendation mentions build-taiji-input as usable (positive signal: 'yes', 'suitable', 'compatible', 'can use', 'proceed')"
+  ]
+}

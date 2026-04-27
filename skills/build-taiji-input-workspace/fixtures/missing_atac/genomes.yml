@@ -1,0 +1,4 @@
+mm10:
+  fasta: /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/missing_atac/ref/genome.fa
+  gtf:   /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/missing_atac/ref/genes.gtf
+  hic:   /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/missing_atac/ref/loops.txt

@@ -1,0 +1,43 @@
+{
+  "classification": "bulk",
+  "dataset_path": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10",
+  "genome_hint": "mm10",
+  "modalities_detected": ["rna", "atac", "hic"],
+  "bulk_files": {
+    ".narrowPeak": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/atac/sampleA.narrowPeak",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/atac/sampleB.narrowPeak",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/atac/sampleC.narrowPeak"
+    ],
+    ".tsv": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/rna/sampleA.tsv",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/rna/sampleB.tsv",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/rna/sampleC.tsv"
+    ],
+    ".rna.txt": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/rna/sampleA.rna.txt",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/rna/sampleB.rna.txt",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/rna/sampleC.rna.txt"
+    ],
+    ".bedpe": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/hic/loops.bedpe"
+    ]
+  },
+  "sc_files": {},
+  "signals": {
+    "bulk_indicators": [
+      "per-sample narrowPeak files (bulk ATAC-seq peak calls)",
+      "per-sample TSV/rna.txt expression tables (bulk RNA-seq quantification)",
+      "Hi-C loops in .bedpe format (bulk 3D genome contact data)",
+      "small number of distinct sample IDs (sampleA/B/C) rather than thousands of cell barcodes"
+    ],
+    "single_cell_indicators": [
+      "none: no .h5ad, .h5 (10x), .mtx, fragments.tsv.gz, barcodes.tsv, .loom, or CellRanger/ArchR-style outputs found"
+    ]
+  },
+  "recommendation": "Usable with build-taiji-input: directory contains bulk RNA-seq expression tables, bulk ATAC-seq narrowPeak files, and Hi-C loops (.bedpe) for mm10, which is exactly the input shape Taiji's bulk pipeline consumes. No single-cell artifacts detected, so no sc->pseudobulk aggregation is needed.",
+  "caveats": [
+    "All listed files are zero-byte placeholders; classification is based on filenames/extensions only. Before running Taiji, verify that the RNA tables contain gene-level expression and that narrowPeak files are non-empty.",
+    "Both .tsv and .rna.txt exist per sample; confirm which one build-taiji-input should consume to avoid double-counting."
+  ]
+}

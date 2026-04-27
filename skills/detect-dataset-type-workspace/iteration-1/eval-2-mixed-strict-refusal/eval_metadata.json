@@ -1,0 +1,15 @@
+{
+  "eval_id": 2,
+  "eval_name": "mixed-strict-refusal",
+  "prompt": "Classify the directory at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/mixed. Then decide whether it's safe to proceed to build-taiji-input, and write your conclusion to the output directory I'll specify (filename: detect_result.json) with fields: classification, bulk_files, sc_files, recommendation (string), and safe_for_bulk_taiji (boolean).",
+  "assertions": [
+    "detect_result.json exists at expected path",
+    "result is valid JSON",
+    "classification field equals 'mixed'",
+    "bulk_files includes both .tsv and .narrowpeak entries",
+    "sc_files includes a .h5ad entry",
+    "safe_for_bulk_taiji is boolean false",
+    "recommendation mentions the mixed state (keyword: 'mixed', 'both', 'combined')",
+    "recommendation refuses build-taiji-input (keyword: 'not', 'cannot', 'refuse', 'do not')"
+  ]
+}

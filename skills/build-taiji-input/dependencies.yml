@@ -1,0 +1,22 @@
+# Runtime dependencies for the build-taiji-input skill.
+# Read by bin/doctor.sh to verify the install before a run.
+
+skill: build-taiji-input
+purpose: Build the bulk-Taiji input xlsx (Active + active_metadata sheets).
+
+binaries: []           # Pure-Python; no system binaries needed.
+
+python_packages:
+  - {name: python,    min_version: "3.10"}
+  - {name: pandas,    min_version: "2.0"}      # data frame ops for xlsx assembly
+  - {name: openpyxl,  min_version: "3.1"}      # xlsx writer engine
+  - {name: pyyaml,    import_name: yaml, min_version: "6.0"}  # config + samples sheet parsing
+
+r_packages: []
+
+data: []
+
+notes: |
+  Soft-imports detect-dataset-type at runtime via a sys.path shim. If the
+  sibling skill is missing, the pre-flight gate degrades to a warning instead
+  of failing the build. No hard dependency between skills.

@@ -1,0 +1,12 @@
+binaries/
+dependencies_data/
+data/
+runs/*/Output/
+runs/*/Input/
+runs/*/log/
+runs/*/taiji_config.yml
+runs/*/taiji_input.xlsx
+runs/*/taiji_config_files.txt
+__pycache__/
+*.pyc
+.DS_Store

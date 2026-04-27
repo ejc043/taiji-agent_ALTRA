@@ -1,0 +1,410 @@
+{
+  "metadata": {
+    "skill_name": "detect-dataset-type",
+    "skill_path": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type",
+    "executor_model": "claude-opus-4-7",
+    "analyzer_model": "claude-opus-4-7",
+    "timestamp": "2026-04-22T20:45:32Z",
+    "evals_run": [
+      0,
+      1,
+      2
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 0,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 27.35,
+        "tokens": 18928,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "detect_result.json exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/iteration-1/eval-0-bulk-directory/with_skill/outputs/detect_result.json"
+        },
+        {
+          "text": "result is valid JSON",
+          "passed": true,
+          "evidence": "parsed"
+        },
+        {
+          "text": "classification field equals 'bulk'",
+          "passed": true,
+          "evidence": "classification='bulk'"
+        },
+        {
+          "text": "bulk_files includes a .tsv entry",
+          "passed": true,
+          "evidence": "bulk_exts normalized: ['.bedpe', '.narrowpeak', '.tsv']"
+        },
+        {
+          "text": "bulk_files includes a .narrowpeak entry (case-insensitive)",
+          "passed": true,
+          "evidence": "bulk_exts normalized: ['.bedpe', '.narrowpeak', '.tsv']"
+        },
+        {
+          "text": "bulk_files includes a .bedpe entry",
+          "passed": true,
+          "evidence": "bulk_exts normalized: ['.bedpe', '.narrowpeak', '.tsv']"
+        },
+        {
+          "text": "sc_files is empty",
+          "passed": true,
+          "evidence": "sc_files: {}"
+        },
+        {
+          "text": "recommendation indicates build-taiji-input is usable",
+          "passed": true,
+          "evidence": "matched: ['usable']"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 22.6,
+        "tokens": 17448,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "detect_result.json exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/iteration-1/eval-1-single-cell-h5ad/with_skill/outputs/detect_result.json"
+        },
+        {
+          "text": "result is valid JSON",
+          "passed": true,
+          "evidence": "parsed"
+        },
+        {
+          "text": "classification field equals 'single-cell'",
+          "passed": true,
+          "evidence": "classification='single-cell'"
+        },
+        {
+          "text": "sc_files captures both .h5ad files",
+          "passed": true,
+          "evidence": "sc_exts=['.h5ad'], h5ad_count=3"
+        },
+        {
+          "text": "bulk_files is empty",
+          "passed": true,
+          "evidence": "bulk_files: {}"
+        },
+        {
+          "text": "recommendation refuses build-taiji-input",
+          "passed": true,
+          "evidence": "matched: ['not', 'do not']"
+        },
+        {
+          "text": "recommendation names single-cell / sc / h5ad",
+          "passed": true,
+          "evidence": "matched: ['single-cell', 'anndata', 'h5ad', 'sc-taiji', 'scenic']"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 24.97,
+        "tokens": 17981,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "detect_result.json exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/iteration-1/eval-2-mixed-strict-refusal/with_skill/outputs/detect_result.json"
+        },
+        {
+          "text": "result is valid JSON",
+          "passed": true,
+          "evidence": "parsed"
+        },
+        {
+          "text": "classification field equals 'mixed'",
+          "passed": true,
+          "evidence": "classification='mixed'"
+        },
+        {
+          "text": "bulk_files includes both .tsv and .narrowpeak",
+          "passed": true,
+          "evidence": "bulk_exts=['.narrowpeak', '.tsv']"
+        },
+        {
+          "text": "sc_files includes .h5ad",
+          "passed": true,
+          "evidence": "sc_exts=['.h5ad']"
+        },
+        {
+          "text": "safe_for_bulk_taiji is boolean false",
+          "passed": true,
+          "evidence": "safe_for_bulk_taiji=False (type=bool)"
+        },
+        {
+          "text": "recommendation mentions the mixed state",
+          "passed": true,
+          "evidence": "matched: ['mixed', 'both']"
+        },
+        {
+          "text": "recommendation refuses build-taiji-input",
+          "passed": true,
+          "evidence": "matched: ['not', 'cannot', 'do not']"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 0,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 35.43,
+        "tokens": 16807,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "detect_result.json exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/iteration-1/eval-0-bulk-directory/without_skill/outputs/detect_result.json"
+        },
+        {
+          "text": "result is valid JSON",
+          "passed": true,
+          "evidence": "parsed"
+        },
+        {
+          "text": "classification field equals 'bulk'",
+          "passed": true,
+          "evidence": "classification='bulk'"
+        },
+        {
+          "text": "bulk_files includes a .tsv entry",
+          "passed": true,
+          "evidence": "bulk_exts normalized: ['.bedpe', '.narrowpeak', '.tsv', '.txt']"
+        },
+        {
+          "text": "bulk_files includes a .narrowpeak entry (case-insensitive)",
+          "passed": true,
+          "evidence": "bulk_exts normalized: ['.bedpe', '.narrowpeak', '.tsv', '.txt']"
+        },
+        {
+          "text": "bulk_files includes a .bedpe entry",
+          "passed": true,
+          "evidence": "bulk_exts normalized: ['.bedpe', '.narrowpeak', '.tsv', '.txt']"
+        },
+        {
+          "text": "sc_files is empty",
+          "passed": true,
+          "evidence": "sc_files: {}"
+        },
+        {
+          "text": "recommendation indicates build-taiji-input is usable",
+          "passed": true,
+          "evidence": "matched: ['usable']"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 7,
+        "failed": 0,
+        "total": 7,
+        "time_seconds": 18.13,
+        "tokens": 13933,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "detect_result.json exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/iteration-1/eval-1-single-cell-h5ad/without_skill/outputs/detect_result.json"
+        },
+        {
+          "text": "result is valid JSON",
+          "passed": true,
+          "evidence": "parsed"
+        },
+        {
+          "text": "classification field equals 'single-cell'",
+          "passed": true,
+          "evidence": "classification='single-cell'"
+        },
+        {
+          "text": "sc_files captures both .h5ad files",
+          "passed": true,
+          "evidence": "sc_exts=['.h5ad'], h5ad_count=2"
+        },
+        {
+          "text": "bulk_files is empty",
+          "passed": true,
+          "evidence": "bulk_files: []"
+        },
+        {
+          "text": "recommendation refuses build-taiji-input",
+          "passed": true,
+          "evidence": "matched: ['not', 'do not']"
+        },
+        {
+          "text": "recommendation names single-cell / sc / h5ad",
+          "passed": true,
+          "evidence": "matched: ['single-cell', 'anndata', 'h5ad']"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 8,
+        "failed": 0,
+        "total": 8,
+        "time_seconds": 18.26,
+        "tokens": 14088,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "detect_result.json exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/iteration-1/eval-2-mixed-strict-refusal/without_skill/outputs/detect_result.json"
+        },
+        {
+          "text": "result is valid JSON",
+          "passed": true,
+          "evidence": "parsed"
+        },
+        {
+          "text": "classification field equals 'mixed'",
+          "passed": true,
+          "evidence": "classification='mixed'"
+        },
+        {
+          "text": "bulk_files includes both .tsv and .narrowpeak",
+          "passed": true,
+          "evidence": "bulk_exts=['.narrowpeak', '.tsv']"
+        },
+        {
+          "text": "sc_files includes .h5ad",
+          "passed": true,
+          "evidence": "sc_exts=['.h5ad']"
+        },
+        {
+          "text": "safe_for_bulk_taiji is boolean false",
+          "passed": true,
+          "evidence": "safe_for_bulk_taiji=False (type=bool)"
+        },
+        {
+          "text": "recommendation mentions the mixed state",
+          "passed": true,
+          "evidence": "matched: ['mix of']"
+        },
+        {
+          "text": "recommendation refuses build-taiji-input",
+          "passed": true,
+          "evidence": "matched: ['not', 'do not']"
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 24.9733,
+        "stddev": 2.375,
+        "min": 22.6,
+        "max": 27.35
+      },
+      "tokens": {
+        "mean": 18119.0,
+        "stddev": 749.5886,
+        "min": 17448,
+        "max": 18928
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 23.94,
+        "stddev": 9.9508,
+        "min": 18.13,
+        "max": 35.43
+      },
+      "tokens": {
+        "mean": 14942.6667,
+        "stddev": 1616.419,
+        "min": 13933,
+        "max": 16807
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.00",
+      "time_seconds": "+1.0",
+      "tokens": "+3176"
+    }
+  },
+  "notes": [
+    "Pass rate tied at 100% under a deliberately lenient grader that normalizes extensions before checking membership. A strict-schema grader (requiring dict-of-extension keys, exact case, etc.) would have shown a meaningful delta \u2014 baselines invented different schemas on every run.",
+    "With-skill is MORE expensive here (~+1s, ~+3k tokens) because the task is simple enough that a competent model solves it without external guidance. The extra cost is the skill-read overhead (SKILL.md + classification_rules.md).",
+    "Standard deviation on time is the real story: with-skill \u03c3=2.4s vs baseline \u03c3=10.0s (~4x). The skill buys *predictability* more than raw correctness.",
+    "Output-schema drift in baselines: eval-0 invented a spurious '.rna.txt' extension key; eval-1 and eval-2 keyed bulk_files / sc_files by *filenames* ('cd8_effector.h5ad') rather than extensions. A downstream tool consuming these as if they were extension-keyed dicts would break.",
+    "Baselines got the substantive answer right on all three evals (correct classification + correct refusal logic). The skill's strongest value in isolation is consistency; its strongest value in context is the pre-flight gate inside build-taiji-input, which this benchmark does not directly measure.",
+    "Single run per configuration (N=1). The stddev reflects eval-to-eval variation rather than within-config variance. Re-running \u22653x per config would give a proper noise floor, especially since the time numbers are close."
+  ]
+}

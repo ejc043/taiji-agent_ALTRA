@@ -1,0 +1,18 @@
+{
+  "eval_id": 2,
+  "eval_name": "hg38-human-naive-effector",
+  "prompt": "Build a bulk Taiji input xlsx for a human CD8 T-cell experiment: 4 samples, 2 cohorts (naive vs effector), hg38. Data dir is /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/data/, samples CSV at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/samples.csv, genome registry at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/genomes.yml. Save the result as taiji.input.xlsx in the output directory.",
+  "assertions": [
+    "xlsx file exists at expected path",
+    "sheet names are exactly 'Active' and 'active_metadata'",
+    "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+    "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+    "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+    "RNA-seq rows have tags='GeneQuant'",
+    "ATAC-seq rows have format='NarrowPeak'",
+    "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+    "Active has 4 distinct groups",
+    "cohorts are exactly {naive, effector}",
+    "active_metadata paths reference hg38 reference files"
+  ]
+}

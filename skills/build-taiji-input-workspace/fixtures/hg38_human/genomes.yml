@@ -1,0 +1,4 @@
+hg38:
+  fasta: /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/ref/hg38.fa
+  gtf:   /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/ref/hg38_genes.gtf
+  hic:   /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/ref/hg38_loops.txt

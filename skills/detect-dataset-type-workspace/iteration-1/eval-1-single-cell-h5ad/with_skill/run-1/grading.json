@@ -1,0 +1,47 @@
+{
+  "passed": true,
+  "score": "7/7",
+  "expectations": [
+    {
+      "text": "detect_result.json exists at expected path",
+      "passed": true,
+      "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/iteration-1/eval-1-single-cell-h5ad/with_skill/outputs/detect_result.json"
+    },
+    {
+      "text": "result is valid JSON",
+      "passed": true,
+      "evidence": "parsed"
+    },
+    {
+      "text": "classification field equals 'single-cell'",
+      "passed": true,
+      "evidence": "classification='single-cell'"
+    },
+    {
+      "text": "sc_files captures both .h5ad files",
+      "passed": true,
+      "evidence": "sc_exts=['.h5ad'], h5ad_count=3"
+    },
+    {
+      "text": "bulk_files is empty",
+      "passed": true,
+      "evidence": "bulk_files: {}"
+    },
+    {
+      "text": "recommendation refuses build-taiji-input",
+      "passed": true,
+      "evidence": "matched: ['not', 'do not']"
+    },
+    {
+      "text": "recommendation names single-cell / sc / h5ad",
+      "passed": true,
+      "evidence": "matched: ['single-cell', 'anndata', 'h5ad', 'sc-taiji', 'scenic']"
+    }
+  ],
+  "summary": {
+    "passed": 7,
+    "failed": 0,
+    "total": 7,
+    "pass_rate": 1.0
+  }
+}

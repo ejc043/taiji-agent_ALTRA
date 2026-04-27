@@ -1,0 +1,26 @@
+{
+  "skill_name": "build-taiji-input",
+  "evals": [
+    {
+      "id": 0,
+      "name": "happy-path-mm10",
+      "prompt": "I've got processed bulk RNA-seq and ATAC-seq files for 4 mouse samples in /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/happy_path_mm10/data/ and a samples list at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/happy_path_mm10/samples.csv. The reference genome paths are in /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/happy_path_mm10/genomes.yml. Please build me the bulk Taiji input xlsx (the one with Active and active_metadata sheets) for mm10. Save it as taiji.input.xlsx in the output directory I'll specify.",
+      "expected_output": "An xlsx file with sheets 'Active' and 'active_metadata'. Active has 12 rows (header + 4 samples x 3 tracks: RNA-seq, ATAC-seq, HiC). active_metadata has 5 rows (header + 4 groups).",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "missing-atac-nonstrict",
+      "prompt": "Same kind of task as before but one sample is bad. Data is in /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/missing_atac/data/, samples CSV at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/missing_atac/samples.csv, genome config at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/missing_atac/genomes.yml. One of the four samples (D30-WT_1.spleen) has its RNA but is missing its narrowPeak ATAC file. I still want the xlsx built from the samples that DO have everything — just drop the broken one. mm10. Write to taiji.input.xlsx in the output directory.",
+      "expected_output": "An xlsx with 3 complete samples (D30-KO_0.siiel, D30-KO_1.spleen, D30-WT_0.siiel). D30-WT_1.spleen should NOT appear in either sheet. Active has 10 rows (header + 3 samples x 3 tracks). active_metadata has 4 rows (header + 3 groups).",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "hg38-human-naive-effector",
+      "prompt": "Build a bulk Taiji input xlsx for a human CD8 T-cell experiment: 4 samples, 2 cohorts (naive vs effector), hg38. Data dir is /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/data/, samples CSV at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/samples.csv, genome registry at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/genomes.yml. Save the result as taiji.input.xlsx in the output directory.",
+      "expected_output": "xlsx with 4 groups, cohorts evenly split 2 naive / 2 effector, all paths point into the hg38_human fixture, active_metadata uses hg38.fa and hg38_genes.gtf.",
+      "files": []
+    }
+  ]
+}

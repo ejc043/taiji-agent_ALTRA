@@ -1,0 +1,21 @@
+# Runtime dependencies for the workflow-log skill.
+# Read by bin/doctor.sh.
+
+skill: workflow-log
+purpose: Per-run audit log (.md + .jsonl) for the Taiji-agent workflow.
+
+binaries: []           # Pure-Python skill; the optional doctor.sh snapshot
+                       # uses bash but is best-effort and degrades silently.
+
+python_packages:
+  - {name: python, min_version: "3.10"}
+
+r_packages: []
+
+data: []
+
+notes: |
+  This skill has no hard runtime deps beyond Python 3.10. It writes plain
+  text + JSON files into <work_dir>/log/. Soft-attached by the other three
+  skills via TaijiLog.attach_active(); they degrade silently when the log
+  skill is not on sys.path.

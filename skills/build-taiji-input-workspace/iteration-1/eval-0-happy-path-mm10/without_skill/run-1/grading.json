@@ -1,0 +1,67 @@
+{
+  "passed": false,
+  "score": "2/11",
+  "expectations": [
+    {
+      "text": "xlsx file exists at expected path",
+      "passed": true,
+      "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-0-happy-path-mm10/without_skill/outputs/taiji.input.xlsx"
+    },
+    {
+      "text": "sheet names are exactly 'Active' and 'active_metadata'",
+      "passed": true,
+      "evidence": "actual sheets: ['Active', 'active_metadata']"
+    },
+    {
+      "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+      "passed": false,
+      "evidence": "actual: ['sample', 'group', 'RNA-seq', 'ATAC-seq', 'genome']"
+    },
+    {
+      "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+      "passed": false,
+      "evidence": "actual: ['sample', 'group', 'cohort', 'rep', 'tissue', 'genotype', 'genome', 'fasta', 'gtf']"
+    },
+    {
+      "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "RNA-seq rows have tags='GeneQuant'",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "ATAC-seq rows have format='NarrowPeak'",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "Active has 4 distinct groups",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "active_metadata has 4 rows (one per group)",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "both KO and WT cohorts present",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    }
+  ],
+  "summary": {
+    "passed": 2,
+    "failed": 9,
+    "total": 11,
+    "pass_rate": 0.1818
+  }
+}

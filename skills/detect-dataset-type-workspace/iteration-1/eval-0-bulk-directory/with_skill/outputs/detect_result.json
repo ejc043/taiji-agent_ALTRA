@@ -1,0 +1,28 @@
+{
+  "classification": "bulk",
+  "paths_scanned": [
+    "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10"
+  ],
+  "bulk_files": {
+    ".narrowpeak": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/atac/sampleC.narrowPeak",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/atac/sampleA.narrowPeak",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/atac/sampleB.narrowPeak"
+    ],
+    ".bedpe": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/hic/loops.bedpe"
+    ],
+    ".tsv": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/rna/sampleA.tsv",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/rna/sampleB.tsv",
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/bulk_mm10/rna/sampleC.tsv"
+    ]
+  },
+  "sc_files": {},
+  "other_exts": {
+    ".txt": 3
+  },
+  "warnings": [],
+  "errors": [],
+  "recommendation": "Usable with build-taiji-input: directory is cleanly bulk, with all three bulk modalities present (.tsv RNA-seq, .narrowPeak ATAC-seq, .bedpe HiC) and no single-cell signatures. Because .tsv is the acknowledged weak bulk signature, confirm the RNA TSVs are GeneQuant-format (gene IDs in column 1) before running; all fixture files here are 0 bytes, so populate real data before invoking the pipeline."
+}

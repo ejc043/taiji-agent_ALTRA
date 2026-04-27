@@ -1,0 +1,9 @@
+{
+  "classification": "single-cell",
+  "bulk_files": [],
+  "sc_files": [
+    "cd8_effector.h5ad",
+    "cd8_naive.h5ad"
+  ],
+  "recommendation": "Do NOT use build-taiji-input on this data as-is. The directory contains only .h5ad (AnnData) files, which are single-cell RNA-seq data. Taiji's build-taiji-input expects bulk RNA-seq (e.g., expression matrices/counts tables per sample) and bulk ATAC-seq (BAM/BED/peaks) inputs. To use Taiji with this data, you must first pseudobulk the single-cell data: group cells by cluster/cell-type/sample (e.g., cd8_effector vs cd8_naive), aggregate counts per group into bulk-like expression tables, and pair them with matched (sc)ATAC-seq-derived pseudobulk peaks before running build-taiji-input."
+}

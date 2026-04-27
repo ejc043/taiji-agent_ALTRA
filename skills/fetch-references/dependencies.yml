@@ -1,0 +1,31 @@
+# Runtime dependencies for the fetch-references skill.
+# Read by bin/doctor.sh.
+
+skill: fetch-references
+purpose: Idempotently download per-genome reference data (FASTA + GTF + MEME)
+         from stable upstream hosts into <output_dir>/dependencies_data/.
+
+binaries:
+  - {name: curl,     optional: true,
+     purpose: "fallback only; downloader uses Python urllib"}
+  - {name: samtools, optional: true,
+     purpose: "auto-build genome.fa.fai after FASTA download"}
+
+python_packages:
+  - {name: python,    min_version: "3.10"}
+  - {name: pyyaml,    import_name: yaml, min_version: "6.0"}
+
+r_packages: []
+
+data: []
+
+notes: |
+  Downloads happen via Python's urllib.request — no curl/wget binary
+  required for the core flow. samtools is optional: when present, the
+  skill calls `samtools faidx` after FASTA downloads to produce the .fai
+  index Taiji uses implicitly. When absent, the skill prints a note and
+  the user can build the index manually later.
+
+  All downloads are idempotent (size-tolerance check) and atomic (.part
+  temp file + rename on success). Re-running this skill on a complete
+  install is a no-op except for the report output.

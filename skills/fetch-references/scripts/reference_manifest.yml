@@ -1,0 +1,94 @@
+# reference_manifest.yml — declarative spec of the reference data the
+# Taiji-agent pipeline needs per genome. Read by fetch.py.
+#
+# For each genome:
+#   - fasta:  primary-assembly genome FASTA (gunzipped on disk)
+#   - gtf:    GENCODE annotation (gunzipped on disk)
+#   - motif:  HOCOMOCO v11 MEME motif file (kept as-is)
+#   - build_fai (optional flag on fasta): run samtools faidx after download
+#
+# All URLs are from stable, long-lived hosts:
+#   - GENCODE FASTA + GTF via EMBL-EBI mirror (release-versioned, immutable)
+#   - HOCOMOCO v11 from autosome.org (the canonical host since 2018)
+#
+# Targets are written under <output_dir>/<genome>/<file>.
+
+hg38:
+  description: "Human GRCh38 + GENCODE v45 + HOCOMOCO v11 (human)"
+  files:
+    fasta:
+      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_45/GRCh38.primary_assembly.genome.fa.gz
+      target: hg38/genome.fa
+      gunzip: true
+      approx_size_mb: 3000
+      build_fai: true
+    gtf:
+      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_45/gencode.v45.annotation.gtf.gz
+      target: hg38/genes.gtf
+      gunzip: true
+      approx_size_mb: 1500
+    motif:
+      url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/HUMAN/mono/HOCOMOCOv11_full_HUMAN_mono_meme_format.meme
+      target: hg38/HOCOMOCOv11_human.meme
+      gunzip: false
+      approx_size_mb: 0.7   # mono = one motif per TF; ~700 KB on disk
+
+hg19:
+  description: "Human GRCh37 + GENCODE v19 (frozen) + HOCOMOCO v11 (human)"
+  files:
+    fasta:
+      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_19/GRCh37.p13.genome.fa.gz
+      target: hg19/genome.fa
+      gunzip: true
+      approx_size_mb: 3000
+      build_fai: true
+    gtf:
+      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_19/gencode.v19.annotation.gtf.gz
+      target: hg19/genes.gtf
+      gunzip: true
+      approx_size_mb: 1300
+    motif:
+      url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/HUMAN/mono/HOCOMOCOv11_full_HUMAN_mono_meme_format.meme
+      target: hg19/HOCOMOCOv11_human.meme
+      gunzip: false
+      approx_size_mb: 0.7   # mono = one motif per TF; ~700 KB on disk
+
+mm10:
+  description: "Mouse GRCm38 + GENCODE M25 (last on GRCm38) + HOCOMOCO v11 (mouse)"
+  files:
+    fasta:
+      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/GRCm38.primary_assembly.genome.fa.gz
+      target: mm10/genome.fa
+      gunzip: true
+      approx_size_mb: 2700
+      build_fai: true
+    gtf:
+      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/gencode.vM25.annotation.gtf.gz
+      target: mm10/genes.gtf
+      gunzip: true
+      approx_size_mb: 900
+    motif:
+      url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/MOUSE/mono/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme
+      target: mm10/HOCOMOCOv11_mouse.meme
+      gunzip: false
+      approx_size_mb: 0.7   # mono = one motif per TF; ~700 KB on disk
+
+mm39:
+  description: "Mouse GRCm39 + GENCODE M34 + HOCOMOCO v11 (mouse)"
+  files:
+    fasta:
+      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M34/GRCm39.primary_assembly.genome.fa.gz
+      target: mm39/genome.fa
+      gunzip: true
+      approx_size_mb: 2700
+      build_fai: true
+    gtf:
+      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M34/gencode.vM34.annotation.gtf.gz
+      target: mm39/genes.gtf
+      gunzip: true
+      approx_size_mb: 1000
+    motif:
+      url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/MOUSE/mono/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme
+      target: mm39/HOCOMOCOv11_mouse.meme
+      gunzip: false
+      approx_size_mb: 0.7   # mono = one motif per TF; ~700 KB on disk

@@ -1,0 +1,72 @@
+{
+  "passed": false,
+  "score": "1/12",
+  "expectations": [
+    {
+      "text": "xlsx file exists at expected path",
+      "passed": true,
+      "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-1-missing-atac-nonstrict/without_skill/outputs/taiji.input.xlsx"
+    },
+    {
+      "text": "sheet names are exactly 'Active' and 'active_metadata'",
+      "passed": false,
+      "evidence": "actual sheets: ['RNA-seq', 'ATAC-seq']"
+    },
+    {
+      "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+      "passed": false,
+      "evidence": "actual: []"
+    },
+    {
+      "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+      "passed": false,
+      "evidence": "actual: []"
+    },
+    {
+      "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "RNA-seq rows have tags='GeneQuant'",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "ATAC-seq rows have format='NarrowPeak'",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "broken sample 'D30-WT_1.spleen' NOT present in Active sheet",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "broken sample 'D30-WT_1.spleen' NOT present in active_metadata",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "Active has exactly 3 distinct groups",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "active_metadata has exactly 3 rows",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    }
+  ],
+  "summary": {
+    "passed": 1,
+    "failed": 11,
+    "total": 12,
+    "pass_rate": 0.0833
+  }
+}

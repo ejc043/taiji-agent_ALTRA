@@ -1,0 +1,67 @@
+{
+  "passed": false,
+  "score": "1/11",
+  "expectations": [
+    {
+      "text": "xlsx file exists at expected path",
+      "passed": true,
+      "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-2-hg38-human-naive-effector/without_skill/outputs/taiji.input.xlsx"
+    },
+    {
+      "text": "sheet names are exactly 'Active' and 'active_metadata'",
+      "passed": false,
+      "evidence": "actual sheets: ['RNA-seq', 'ATAC-seq', 'Genome']"
+    },
+    {
+      "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+      "passed": false,
+      "evidence": "actual: []"
+    },
+    {
+      "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+      "passed": false,
+      "evidence": "actual: []"
+    },
+    {
+      "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "RNA-seq rows have tags='GeneQuant'",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "ATAC-seq rows have format='NarrowPeak'",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+      "passed": false,
+      "evidence": "Active sheet or header missing"
+    },
+    {
+      "text": "Active has 4 distinct groups",
+      "passed": false,
+      "evidence": "header mismatch"
+    },
+    {
+      "text": "cohorts are exactly {naive, effector}",
+      "passed": false,
+      "evidence": "header mismatch"
+    },
+    {
+      "text": "active_metadata paths reference hg38 reference files",
+      "passed": false,
+      "evidence": "header mismatch"
+    }
+  ],
+  "summary": {
+    "passed": 1,
+    "failed": 10,
+    "total": 11,
+    "pass_rate": 0.0909
+  }
+}

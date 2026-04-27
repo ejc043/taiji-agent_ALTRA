@@ -1,0 +1,519 @@
+{
+  "metadata": {
+    "skill_name": "build-taiji-input",
+    "skill_path": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input",
+    "executor_model": "claude-opus-4-7",
+    "analyzer_model": "claude-opus-4-7",
+    "timestamp": "2026-04-21T22:36:54Z",
+    "evals_run": [
+      0,
+      1,
+      2
+    ],
+    "runs_per_configuration": 1
+  },
+  "runs": [
+    {
+      "eval_id": 0,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 11,
+        "failed": 0,
+        "total": 11,
+        "time_seconds": 30.14,
+        "tokens": 18993,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "xlsx file exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-0-happy-path-mm10/with_skill/outputs/taiji.input.xlsx"
+        },
+        {
+          "text": "sheet names are exactly 'Active' and 'active_metadata'",
+          "passed": true,
+          "evidence": "actual sheets: ['Active', 'active_metadata']"
+        },
+        {
+          "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+          "passed": true,
+          "evidence": "actual: ['type', 'id', 'group', 'rep', 'path', 'tags', 'format', 'cohort']"
+        },
+        {
+          "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+          "passed": true,
+          "evidence": "actual: ['Submitter_ID', 'Case_ID', 'vcf_Location', 'gtf_Location']"
+        },
+        {
+          "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+          "passed": true,
+          "evidence": "actual types: ['ATAC-seq', 'HiC', 'RNA-seq']"
+        },
+        {
+          "text": "RNA-seq rows have tags='GeneQuant'",
+          "passed": true,
+          "evidence": ""
+        },
+        {
+          "text": "ATAC-seq rows have format='NarrowPeak'",
+          "passed": true,
+          "evidence": ""
+        },
+        {
+          "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+          "passed": true,
+          "evidence": ""
+        },
+        {
+          "text": "Active has 4 distinct groups",
+          "passed": true,
+          "evidence": "groups found: ['D30-KO_0.siiel', 'D30-KO_1.spleen', 'D30-WT_0.siiel', 'D30-WT_1.spleen']"
+        },
+        {
+          "text": "active_metadata has 4 rows (one per group)",
+          "passed": true,
+          "evidence": "row count: 4"
+        },
+        {
+          "text": "both KO and WT cohorts present",
+          "passed": true,
+          "evidence": "cohorts: ['KO', 'WT']"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 12,
+        "failed": 0,
+        "total": 12,
+        "time_seconds": 30.71,
+        "tokens": 19660,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "xlsx file exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-1-missing-atac-nonstrict/with_skill/outputs/taiji.input.xlsx"
+        },
+        {
+          "text": "sheet names are exactly 'Active' and 'active_metadata'",
+          "passed": true,
+          "evidence": "actual sheets: ['Active', 'active_metadata']"
+        },
+        {
+          "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+          "passed": true,
+          "evidence": "actual: ['type', 'id', 'group', 'rep', 'path', 'tags', 'format', 'cohort']"
+        },
+        {
+          "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+          "passed": true,
+          "evidence": "actual: ['Submitter_ID', 'Case_ID', 'vcf_Location', 'gtf_Location']"
+        },
+        {
+          "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+          "passed": true,
+          "evidence": "actual types: ['ATAC-seq', 'HiC', 'RNA-seq']"
+        },
+        {
+          "text": "RNA-seq rows have tags='GeneQuant'",
+          "passed": true,
+          "evidence": ""
+        },
+        {
+          "text": "ATAC-seq rows have format='NarrowPeak'",
+          "passed": true,
+          "evidence": ""
+        },
+        {
+          "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+          "passed": true,
+          "evidence": ""
+        },
+        {
+          "text": "broken sample 'D30-WT_1.spleen' NOT present in Active sheet",
+          "passed": true,
+          "evidence": "absent from Active"
+        },
+        {
+          "text": "broken sample 'D30-WT_1.spleen' NOT present in active_metadata",
+          "passed": true,
+          "evidence": "absent from metadata"
+        },
+        {
+          "text": "Active has exactly 3 distinct groups",
+          "passed": true,
+          "evidence": "groups: ['D30-KO_0.siiel', 'D30-KO_1.spleen', 'D30-WT_0.siiel']"
+        },
+        {
+          "text": "active_metadata has exactly 3 rows",
+          "passed": true,
+          "evidence": "row count: 3"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "with_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 1.0,
+        "passed": 11,
+        "failed": 0,
+        "total": 11,
+        "time_seconds": 23.65,
+        "tokens": 17987,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "xlsx file exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-2-hg38-human-naive-effector/with_skill/outputs/taiji.input.xlsx"
+        },
+        {
+          "text": "sheet names are exactly 'Active' and 'active_metadata'",
+          "passed": true,
+          "evidence": "actual sheets: ['Active', 'active_metadata']"
+        },
+        {
+          "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+          "passed": true,
+          "evidence": "actual: ['type', 'id', 'group', 'rep', 'path', 'tags', 'format', 'cohort']"
+        },
+        {
+          "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+          "passed": true,
+          "evidence": "actual: ['Submitter_ID', 'Case_ID', 'vcf_Location', 'gtf_Location']"
+        },
+        {
+          "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+          "passed": true,
+          "evidence": "actual types: ['ATAC-seq', 'HiC', 'RNA-seq']"
+        },
+        {
+          "text": "RNA-seq rows have tags='GeneQuant'",
+          "passed": true,
+          "evidence": ""
+        },
+        {
+          "text": "ATAC-seq rows have format='NarrowPeak'",
+          "passed": true,
+          "evidence": ""
+        },
+        {
+          "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+          "passed": true,
+          "evidence": ""
+        },
+        {
+          "text": "Active has 4 distinct groups",
+          "passed": true,
+          "evidence": "groups: ['CD8_effector_rep1', 'CD8_effector_rep2', 'CD8_naive_rep1', 'CD8_naive_rep2']"
+        },
+        {
+          "text": "cohorts are exactly {naive, effector}",
+          "passed": true,
+          "evidence": "cohorts: ['effector', 'naive']"
+        },
+        {
+          "text": "active_metadata paths reference hg38 reference files",
+          "passed": true,
+          "evidence": "fasta: {'/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/ref/hg38.fa'}, gtf: {'/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/fixtures/hg38_human/ref/hg38_genes.gtf'}"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 0,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.1818,
+        "passed": 2,
+        "failed": 9,
+        "total": 11,
+        "time_seconds": 49.68,
+        "tokens": 20789,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "xlsx file exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-0-happy-path-mm10/without_skill/outputs/taiji.input.xlsx"
+        },
+        {
+          "text": "sheet names are exactly 'Active' and 'active_metadata'",
+          "passed": true,
+          "evidence": "actual sheets: ['Active', 'active_metadata']"
+        },
+        {
+          "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+          "passed": false,
+          "evidence": "actual: ['sample', 'group', 'RNA-seq', 'ATAC-seq', 'genome']"
+        },
+        {
+          "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+          "passed": false,
+          "evidence": "actual: ['sample', 'group', 'cohort', 'rep', 'tissue', 'genotype', 'genome', 'fasta', 'gtf']"
+        },
+        {
+          "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "RNA-seq rows have tags='GeneQuant'",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "ATAC-seq rows have format='NarrowPeak'",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "Active has 4 distinct groups",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "active_metadata has 4 rows (one per group)",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "both KO and WT cohorts present",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 1,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.0833,
+        "passed": 1,
+        "failed": 11,
+        "total": 12,
+        "time_seconds": 49.89,
+        "tokens": 18226,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "xlsx file exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-1-missing-atac-nonstrict/without_skill/outputs/taiji.input.xlsx"
+        },
+        {
+          "text": "sheet names are exactly 'Active' and 'active_metadata'",
+          "passed": false,
+          "evidence": "actual sheets: ['RNA-seq', 'ATAC-seq']"
+        },
+        {
+          "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+          "passed": false,
+          "evidence": "actual: []"
+        },
+        {
+          "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+          "passed": false,
+          "evidence": "actual: []"
+        },
+        {
+          "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "RNA-seq rows have tags='GeneQuant'",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "ATAC-seq rows have format='NarrowPeak'",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "broken sample 'D30-WT_1.spleen' NOT present in Active sheet",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "broken sample 'D30-WT_1.spleen' NOT present in active_metadata",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "Active has exactly 3 distinct groups",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "active_metadata has exactly 3 rows",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        }
+      ],
+      "notes": []
+    },
+    {
+      "eval_id": 2,
+      "configuration": "without_skill",
+      "run_number": 1,
+      "result": {
+        "pass_rate": 0.0909,
+        "passed": 1,
+        "failed": 10,
+        "total": 11,
+        "time_seconds": 58.06,
+        "tokens": 20256,
+        "tool_calls": 0,
+        "errors": 0
+      },
+      "expectations": [
+        {
+          "text": "xlsx file exists at expected path",
+          "passed": true,
+          "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-2-hg38-human-naive-effector/without_skill/outputs/taiji.input.xlsx"
+        },
+        {
+          "text": "sheet names are exactly 'Active' and 'active_metadata'",
+          "passed": false,
+          "evidence": "actual sheets: ['RNA-seq', 'ATAC-seq', 'Genome']"
+        },
+        {
+          "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+          "passed": false,
+          "evidence": "actual: []"
+        },
+        {
+          "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+          "passed": false,
+          "evidence": "actual: []"
+        },
+        {
+          "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "RNA-seq rows have tags='GeneQuant'",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "ATAC-seq rows have format='NarrowPeak'",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+          "passed": false,
+          "evidence": "Active sheet or header missing"
+        },
+        {
+          "text": "Active has 4 distinct groups",
+          "passed": false,
+          "evidence": "header mismatch"
+        },
+        {
+          "text": "cohorts are exactly {naive, effector}",
+          "passed": false,
+          "evidence": "header mismatch"
+        },
+        {
+          "text": "active_metadata paths reference hg38 reference files",
+          "passed": false,
+          "evidence": "header mismatch"
+        }
+      ],
+      "notes": []
+    }
+  ],
+  "run_summary": {
+    "with_skill": {
+      "pass_rate": {
+        "mean": 1.0,
+        "stddev": 0.0,
+        "min": 1.0,
+        "max": 1.0
+      },
+      "time_seconds": {
+        "mean": 28.1667,
+        "stddev": 3.9219,
+        "min": 23.65,
+        "max": 30.71
+      },
+      "tokens": {
+        "mean": 18880.0,
+        "stddev": 842.2048,
+        "min": 17987,
+        "max": 19660
+      }
+    },
+    "without_skill": {
+      "pass_rate": {
+        "mean": 0.1187,
+        "stddev": 0.0548,
+        "min": 0.0833,
+        "max": 0.1818
+      },
+      "time_seconds": {
+        "mean": 52.5433,
+        "stddev": 4.7787,
+        "min": 49.68,
+        "max": 58.06
+      },
+      "tokens": {
+        "mean": 19757.0,
+        "stddev": 1352.4027,
+        "min": 18226,
+        "max": 20789
+      }
+    },
+    "delta": {
+      "pass_rate": "+0.88",
+      "time_seconds": "-24.4",
+      "tokens": "-877"
+    }
+  },
+  "notes": [
+    "Baselines invented wildly different schemas (sheet names RNA-seq/ATAC-seq/Genome, flat-sample layouts) with only incidental overlap \u2014 none matched the Taiji bulk xlsx spec. That's the core value the skill provides: the schema is arbitrary and non-obvious to a model without prior exposure.",
+    "With-skill was faster (~28s vs ~53s) and slightly cheaper (~18.9k vs ~19.8k tokens) on top of being correct. The bundled build_taiji_input.py converts exploration/guessing into a deterministic call.",
+    "'xlsx file exists at expected path' passed for every run (6/6) \u2014 non-discriminating. Cheap signal but contributes little to the delta.",
+    "Single run per configuration (runs_per_configuration=1 de-facto); stddev reflects eval-to-eval variation rather than within-config variance. Re-running each config \u22653 times would give a proper noise floor.",
+    "Eval-1 (missing-atac-nonstrict) most clearly demonstrates the skill's defensive behavior: the broken sample D30-WT_1.spleen was dropped from both sheets cleanly, which the unprompted baseline never attempted."
+  ]
+}

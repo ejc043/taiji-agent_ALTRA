@@ -1,0 +1,14 @@
+{
+  "eval_id": 1,
+  "eval_name": "single-cell-h5ad",
+  "prompt": "I have a dataset directory at /sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/sc_h5ad. Classify it and write a JSON report to the output directory I'll specify (filename: detect_result.json) with fields: classification (one of 'bulk', 'single-cell', 'mixed', 'unknown'), bulk_files, sc_files, and recommendation. The recommendation should explicitly tell me whether I can use build-taiji-input on this data.",
+  "assertions": [
+    "detect_result.json exists at expected path",
+    "result is valid JSON",
+    "classification field equals 'single-cell'",
+    "sc_files includes a .h5ad entry with both sample files",
+    "bulk_files is empty",
+    "recommendation explicitly refuses build-taiji-input (negative signal: 'not', 'cannot', 'refuse', 'do not use', \"won't\", 'incompatible')",
+    "recommendation references single-cell / sc / h5ad by name"
+  ]
+}

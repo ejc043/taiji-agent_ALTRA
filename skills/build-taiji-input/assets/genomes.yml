@@ -1,0 +1,16 @@
+mm10:
+  fasta: /stg3/data1/eunice/Annotation/Genome/Mus_musculus/UCSC/mm10/Sequence/WholeGenomeFasta/genome.fa
+  gtf: /stg3/data1/eunice/Annotation/Genome/Mus_musculus/UCSC/mm10/Annotation/Archives/archive-2015-07-17-14-33-26/Genes/genes.gtf
+  hic: /stg3/data1/eunice/Annotation/Epitensor/mm10/loops.txt
+mm9:
+  fasta: /path/to/mm9/genome.fa
+  gtf: /path/to/mm9/genes.gtf
+  hic: /path/to/Epitensor/mm9/loops.txt
+hg38:
+  fasta: /Users/eunicechoi/Documents/Claude/Projects/taiji agent/dependencies_data/hg38/genome.fa
+  gtf: /Users/eunicechoi/Documents/Claude/Projects/taiji agent/dependencies_data/hg38/genes.gtf
+  hic: null    # per-sample HiC bedpe in Active sheet; no genome-default needed
+hg19:
+  fasta: /path/to/hg19/genome.fa
+  gtf: /path/to/hg19/genes.gtf
+  hic: /path/to/Epitensor/hg19/loops.txt

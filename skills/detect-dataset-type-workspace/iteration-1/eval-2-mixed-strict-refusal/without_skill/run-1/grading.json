@@ -1,0 +1,52 @@
+{
+  "passed": true,
+  "score": "8/8",
+  "expectations": [
+    {
+      "text": "detect_result.json exists at expected path",
+      "passed": true,
+      "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/iteration-1/eval-2-mixed-strict-refusal/without_skill/outputs/detect_result.json"
+    },
+    {
+      "text": "result is valid JSON",
+      "passed": true,
+      "evidence": "parsed"
+    },
+    {
+      "text": "classification field equals 'mixed'",
+      "passed": true,
+      "evidence": "classification='mixed'"
+    },
+    {
+      "text": "bulk_files includes both .tsv and .narrowpeak",
+      "passed": true,
+      "evidence": "bulk_exts=['.narrowpeak', '.tsv']"
+    },
+    {
+      "text": "sc_files includes .h5ad",
+      "passed": true,
+      "evidence": "sc_exts=['.h5ad']"
+    },
+    {
+      "text": "safe_for_bulk_taiji is boolean false",
+      "passed": true,
+      "evidence": "safe_for_bulk_taiji=False (type=bool)"
+    },
+    {
+      "text": "recommendation mentions the mixed state",
+      "passed": true,
+      "evidence": "matched: ['mix of']"
+    },
+    {
+      "text": "recommendation refuses build-taiji-input",
+      "passed": true,
+      "evidence": "matched: ['not', 'do not']"
+    }
+  ],
+  "summary": {
+    "passed": 8,
+    "failed": 0,
+    "total": 8,
+    "pass_rate": 1.0
+  }
+}

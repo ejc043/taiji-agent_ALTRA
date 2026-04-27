@@ -1,0 +1,67 @@
+{
+  "passed": true,
+  "score": "11/11",
+  "expectations": [
+    {
+      "text": "xlsx file exists at expected path",
+      "passed": true,
+      "evidence": "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/build-taiji-input-workspace/iteration-1/eval-0-happy-path-mm10/with_skill/outputs/taiji.input.xlsx"
+    },
+    {
+      "text": "sheet names are exactly 'Active' and 'active_metadata'",
+      "passed": true,
+      "evidence": "actual sheets: ['Active', 'active_metadata']"
+    },
+    {
+      "text": "Active sheet header equals [type,id,group,rep,path,tags,format,cohort]",
+      "passed": true,
+      "evidence": "actual: ['type', 'id', 'group', 'rep', 'path', 'tags', 'format', 'cohort']"
+    },
+    {
+      "text": "active_metadata header equals [Submitter_ID,Case_ID,vcf_Location,gtf_Location]",
+      "passed": true,
+      "evidence": "actual: ['Submitter_ID', 'Case_ID', 'vcf_Location', 'gtf_Location']"
+    },
+    {
+      "text": "every Active row has type in {RNA-seq, ATAC-seq, HiC}",
+      "passed": true,
+      "evidence": "actual types: ['ATAC-seq', 'HiC', 'RNA-seq']"
+    },
+    {
+      "text": "RNA-seq rows have tags='GeneQuant'",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "ATAC-seq rows have format='NarrowPeak'",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "HiC rows have tags='ChromosomeLoop' (or no HiC rows)",
+      "passed": true,
+      "evidence": ""
+    },
+    {
+      "text": "Active has 4 distinct groups",
+      "passed": true,
+      "evidence": "groups found: ['D30-KO_0.siiel', 'D30-KO_1.spleen', 'D30-WT_0.siiel', 'D30-WT_1.spleen']"
+    },
+    {
+      "text": "active_metadata has 4 rows (one per group)",
+      "passed": true,
+      "evidence": "row count: 4"
+    },
+    {
+      "text": "both KO and WT cohorts present",
+      "passed": true,
+      "evidence": "cohorts: ['KO', 'WT']"
+    }
+  ],
+  "summary": {
+    "passed": 11,
+    "failed": 0,
+    "total": 11,
+    "pass_rate": 1.0
+  }
+}

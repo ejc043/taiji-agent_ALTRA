@@ -1,0 +1,18 @@
+{
+  "classification": "mixed",
+  "bulk_files": {
+    ".tsv": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/mixed/sample1.tsv"
+    ],
+    ".narrowpeak": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/mixed/sample1.narrowPeak"
+    ]
+  },
+  "sc_files": {
+    ".h5ad": [
+      "/sessions/quirky-festive-mayer/mnt/taiji agent/skills/detect-dataset-type-workspace/fixtures/mixed/cells.h5ad"
+    ]
+  },
+  "recommendation": "Do NOT proceed to build-taiji-input. Directory contains both bulk signatures (.tsv, .narrowPeak) and a single-cell signature (.h5ad). Under the skill's default strict mode this is a hard refusal (exit code 2). Resolve before gating the pipeline: (a) preferred - split into separate bulk/ and sc/ directories and re-run detection on the bulk path; (b) remove the minority files (here, cells.h5ad if this is really a bulk project, or the .tsv/.narrowPeak if really single-cell); (c) only if the mix is intentional and you accept the risk, re-run with --allow-mixed, but bulk Taiji still cannot consume single-cell inputs. Also note all three files are 0 bytes, which is an independent red flag worth checking before any pipeline run.",
+  "safe_for_bulk_taiji": false
+}

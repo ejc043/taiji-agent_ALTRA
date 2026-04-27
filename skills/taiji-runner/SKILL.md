@@ -1,0 +1,146 @@
+---
+name: taiji-runner
+description: Run Taiji 1.3.0 on a multi-sample dataset by splitting the build-taiji-input xlsx into per-sample TSVs + per-sample configs, materializing the formula template per sample, invoking `taiji run --config <per-sample>.yml` once per sample (sequential or parallel), and capturing per-sample exit code, duration, output counts, and stderr tail in the workflow log. Use this skill whenever the user wants to actually execute Taiji on a dataset they've already prepared with build-taiji-input — i.e. anywhere they say "run taiji", "execute taiji", "run the analysis", "fire off taiji", "kick off taiji on the samples", etc. Mirrors the directory layout (Input/<sample>_input/, Output/Partial/<sample>_output/) of the existing UCSD wrapper at Taiji/taiji_wrapper-uniqueGen.py for cross-compatibility.
+---
+
+# Taiji-runner — per-sample Taiji 1.3.0 executor
+
+## Why this skill exists
+
+`taiji run --config <yml>` reads its input file as YAML or TSV — **never as xlsx**. Each invocation is also single-sample: the Active sheet of our xlsx must be split into per-sample TSVs, and a per-sample config materialized for each one.
+
+This skill closes that gap. It's the missing piece between `build-taiji-input` (which produces the xlsx) and the Taiji binary (which wants per-sample TSV).
+
+## What it produces
+
+Under `--run-dir`:
+
+```
+<run_dir>/
+├── Input/
+│   ├── RA_11_input/
+│   │   ├── RA_11_input.tsv         # filtered Active sheet (rows where group=RA_11)
+│   │   └── RA_11_config.yml        # template with 3 placeholders filled
+│   └── OA_02_input/
+│       ├── OA_02_input.tsv
+│       └── OA_02_config.yml
+├── Output/
+│   └── Partial/
+│       ├── RA_11_output/           # taiji's cwd; GeneRanks.tsv etc. land here
+│       └── OA_02_output/
+├── taiji_config_files.txt          # newline-list of per-sample configs
+└── log/
+    ├── RA_11.taiji.stdout
+    ├── RA_11.taiji.stderr
+    ├── OA_02.taiji.stdout
+    └── OA_02.taiji.stderr
+```
+
+This layout is identical to the existing UCSD wrapper at `Taiji/taiji_wrapper-uniqueGen.py`, so you can mix-and-match: prepare with this skill, run with the SLURM array script, or vice versa.
+
+## Inputs
+
+| Flag | Purpose | Required |
+|------|---------|----------|
+| `--xlsx` | The build-taiji-input output (must have both `Active` and `active_metadata` sheets) | yes |
+| `--template` | Per-sample formula config template; must contain the 3 placeholders | yes |
+| `--run-dir` | Where the per-sample tree lands | yes |
+| `--binary` | Path to `taiji-<OS>-x86_64`. Or set `$TAIJI_BINARY`. Required unless `--prepare-only` | yes (or env var) |
+| `--repo-root` | For `${REPO_ROOT}` substitution in template. Default: autodetect from script location | no |
+| `--threads` | Per-sample thread count (passed as `+RTS -N<n>`). Default: 4 | no |
+| `--parallel` | How many samples to run concurrently. Default: 1 (sequential). Each consumes `threads` cores | no |
+| `--samples` | Comma-separated subset of sample names | no |
+| `--prepare-only` | Materialize TSVs + configs; do NOT invoke Taiji | no |
+| `--continue-on-error` | Keep running remaining samples if one fails | no |
+| `--json` | Machine-readable output | no |
+
+## The three placeholders the template must contain
+
+```yaml
+input:      [insert_input_filepath_here]
+output_dir: [insert_output_directory_here]
+genome:     [insert_genome_filepath_here]
+```
+
+Substitution mapping (per sample):
+
+| Placeholder | Value source |
+|-------------|--------------|
+| `[insert_input_filepath_here]` | `<run_dir>/Input/<sample>_input/<sample>_input.tsv` |
+| `[insert_output_directory_here]` | `<run_dir>/Output/Partial/<sample>_output` |
+| `[insert_genome_filepath_here]` | xlsx `active_metadata.vcf_Location[<sample>]` (per-sample FASTA) |
+
+`${REPO_ROOT}` in the template is also substituted — useful for `motif_file:` / `annotation:` paths that are shared across samples and live under `dependencies_data/`.
+
+## CLI usage
+
+```bash
+# Prepare per-sample TSVs + configs without running Taiji
+python skills/taiji-runner/scripts/run_taiji.py \
+    --xlsx     runs/RA_OA_chr22_demo/taiji_input.xlsx \
+    --template runs/RA_OA_chr22_demo/taiji_config.template.yml \
+    --run-dir  runs/RA_OA_chr22_demo \
+    --prepare-only
+
+# Run Taiji per-sample (sequential, default)
+python skills/taiji-runner/scripts/run_taiji.py \
+    --xlsx     runs/RA_OA_chr22_demo/taiji_input.xlsx \
+    --template runs/RA_OA_chr22_demo/taiji_config.template.yml \
+    --binary   binaries/taiji-macOS-Catalina-10.15 \
+    --run-dir  runs/RA_OA_chr22_demo \
+    --threads  4
+
+# Two samples in parallel, 4 threads each (8 cores total)
+python skills/taiji-runner/scripts/run_taiji.py ... --parallel 2 --threads 4
+
+# Restrict to one sample
+python skills/taiji-runner/scripts/run_taiji.py ... --samples RA_11
+```
+
+## Output validation (the "Taiji exits 0 on workflow failure" gotcha)
+
+After each sample's invocation the runner counts these top-level Taiji 1.3.0 outputs under `<run_dir>/Output/Partial/<sample>_output/`:
+
+- `GeneRanks.tsv` — the headline output (per-TF PageRank-equivalent scores)
+- `GeneRanks_PValues.tsv` — p-values for each TF rank
+- `Network/<sample>/edges_combined.csv` — TF → target edges
+- `Network/<sample>/nodes.csv` — graph nodes
+
+**If exit_code is 0 BUT no `GeneRanks.tsv` exists, the run is marked `fail` with `error: "Taiji exited 0 but produced no GeneRanks.tsv — silent workflow failure. Inspect stderr."`**
+
+This catches the failure mode that bit us on the first run (Taiji's `taiji run` reported `Program exits with errors` but returned exit 0, so the surrounding shell thought everything succeeded). Note that Taiji 1.3.0 emits `GeneRanks.tsv` (singular, no underscore prefix) — earlier versions used `*_pagerank.tsv` which is why the original validator looked for the wrong filename.
+
+## Workflow-log integration
+
+When a workflow-log run is active (the workflow-log skill's `active_run` pointer file exists), the runner emits one stage entry per sample as `taiji_run.<sample>` with full per-sample metadata: config_path, tsv_path, output_dir, exit_code, duration_s, n_generanks_files, n_edges_files, n_nodes_files, stderr_tail, error. Status is `pass` only when the output-validation check passes. When no run is active, logging is skipped silently. The runner attaches via `--run-dir` (not cwd), so it correctly finds `<run_dir>/log/active_run` even when invoked from a parent shell wrapper that didn't `cd` into the run dir.
+
+## Interaction pattern
+
+1. **Always run `--prepare-only` first** when scaffolding a new run. Lets you eyeball the per-sample TSVs and configs before burning compute.
+2. **Watch the per-sample stderr files.** Even when the runner reports overall success, each sample's stderr captures Taiji's progress messages — useful for diagnosing slow stages or missing dependencies.
+3. **Use `--samples` to re-run a single sample** after fixing an issue. The per-sample directory tree is idempotent: rerunning overwrites without disturbing successful samples.
+4. **Default `--parallel 1` is intentional.** Taiji uses a lot of memory per sample (especially the regulatory-network step). Bump to `--parallel 2` only after confirming peak per-sample memory leaves headroom.
+5. **`--continue-on-error` for batch runs.** Default behavior stops the whole batch if one sample fails — usually what you want for interactive runs. For unattended batches, pass the flag so one bad sample doesn't kill the rest.
+
+## Compatibility with the existing UCSD wrapper
+
+The directory layout, file names, and three-placeholder convention are deliberately identical to `Taiji/taiji_wrapper-uniqueGen.py` from your `/stg3/data1/eunice/Taiji/Code/` setup. So:
+
+- A run prepared by this skill (with `--prepare-only`) is consumable by the UCSD `Taiji_UniGen_array.sh` SLURM array script.
+- A run prepared by the UCSD wrapper is consumable by this skill (without `--prepare-only`, using `--samples` to pick which to run).
+
+This is intentional — the skill is meant to *complement* the existing UCSD pipeline, not replace it. Use this skill on Mac/local; use the UCSD pipeline on SLURM.
+
+## Why the defaults are what they are
+
+- **Sequential (`--parallel 1`) by default.** Taiji can use 30+ GB of memory per sample on whole-genome runs; running multiple in parallel without checking limits crashes the box.
+- **`+RTS -N<threads>` not `--threads`.** Taiji 1.3.0 is Haskell; thread count is a Haskell RTS option, not a Taiji flag. The runner is opinionated here so users don't have to remember the syntax.
+- **No automatic SLURM submission.** The existing UCSD wrapper handles SLURM excellently; this skill stays out of that lane and focuses on local execution + per-sample preparation.
+- **Output validation cross-checks file presence**, not just exit code, because Taiji's exit code is unreliable.
+- **Per-sample stderr files persist** even on success, so diagnosing flaky runs after the fact is possible.
+
+## Limitations
+
+- **No SLURM submission built in.** Use the existing `Taiji/Dependencies/Taiji_UniGen_array.sh` pattern for that. Future work: a `--submit slurm` flag.
+- **`--parallel` uses Python threads, not processes.** Fine for shelling out to a binary (each subprocess.run releases the GIL), but be aware that the runner itself is single-process.
+- **No automatic re-run of failed samples.** Re-run is a manual `--samples <failed-name>` invocation. Could be automated with a `--retry-failed` flag in the future.
