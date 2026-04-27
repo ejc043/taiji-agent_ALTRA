@@ -131,6 +131,66 @@ profile_file() {
   esac
 }
 
+# ---- Profile-cache helpers --------------------------------------------------
+#
+# We track which profiles are already installed in the conda env via a
+# marker file inside the env's directory. Each line is:
+#     <profile_name>  <12-char sha256 hash of the env-file when installed>
+#
+# Re-running `bin/install.sh --profile X` is then a no-op when the marker
+# already records X with the current hash. Editing environment.<X>.yml
+# changes the hash and forces a re-install.
+
+# Compute the conda env's filesystem path; empty if env doesn't exist.
+get_env_path() {
+  "$SOLVER" env list 2>/dev/null \
+    | awk -v e="$ENV_NAME" '$1==e {print $NF}' \
+    | head -1
+}
+
+# Short SHA-256 of a file (12 hex chars). Uses python3 for portability
+# (sha256sum/shasum availability differs across macOS vs Linux).
+file_hash() {
+  python3 - "$1" <<'PY' 2>/dev/null || echo "nohash"
+import hashlib, sys
+print(hashlib.sha256(open(sys.argv[1], "rb").read()).hexdigest()[:12])
+PY
+}
+
+# Read the marker file (if present) into a global associative-array-like
+# string-map (bash 3 friendly): "$PROFILE_STATE" lines = "<profile> <hash>".
+read_profile_state() {
+  local env_path="$1"
+  local marker="$env_path/.taiji-agent-profiles"
+  [[ -f "$marker" ]] && cat "$marker" || echo ""
+}
+
+# Append/update a profile entry in the marker.
+write_profile_state() {
+  local env_path="$1" profile="$2" hash="$3"
+  local marker="$env_path/.taiji-agent-profiles"
+  # Drop any existing line for this profile, then append the new one.
+  if [[ -f "$marker" ]]; then
+    grep -v "^${profile} " "$marker" > "${marker}.tmp" 2>/dev/null || true
+    mv "${marker}.tmp" "$marker"
+  fi
+  echo "${profile} ${hash}" >> "$marker"
+}
+
+# True if the marker says <profile> is installed AND its hash matches the
+# current env file's hash.
+profile_already_installed() {
+  local env_path="$1" profile="$2"
+  local f cur_hash recorded_hash state
+  [[ -z "$env_path" || ! -d "$env_path" ]] && return 1
+  f=$(profile_file "$profile")
+  [[ ! -f "$f" ]] && return 1
+  cur_hash=$(file_hash "$f")
+  state=$(read_profile_state "$env_path")
+  recorded_hash=$(echo "$state" | awk -v p="$profile" '$1==p {print $2}' | head -1)
+  [[ -n "$recorded_hash" && "$recorded_hash" == "$cur_hash" ]]
+}
+
 # Verify profile files exist before doing anything.
 for p in "${PROFILES[@]}"; do
   f=$(profile_file "$p")
@@ -154,23 +214,42 @@ if [[ "$USE_LOCKFILE" -eq 1 ]]; then
   "$SOLVER" create -y -n "$ENV_NAME" -f "$LOCKFILE" \
     || { echo "[install] env create from lockfile failed" >&2; exit 3; }
 else
-  # ---- Profile-by-profile install (additive) ----
+  # ---- Profile-by-profile install (additive + cache-aware) ----
   ENV_EXISTS=0
+  ENV_PATH=""
   if "$SOLVER" env list 2>/dev/null | awk '{print $1}' | grep -qx "$ENV_NAME"; then
     ENV_EXISTS=1
+    ENV_PATH=$(get_env_path)
+    echo "[install] env '$ENV_NAME' already exists at: $ENV_PATH"
   fi
 
   for p in "${PROFILES[@]}"; do
     f=$(profile_file "$p")
+
+    # ---- Cache-hit short-circuit: if the env exists AND the marker says
+    # this profile was installed AND the env file's hash hasn't changed
+    # since then, skip the conda call entirely.
+    if [[ "$ENV_EXISTS" -eq 1 ]] && profile_already_installed "$ENV_PATH" "$p"; then
+      echo "[install] profile '$p' already installed (env-file hash matches); skipping."
+      continue
+    fi
+
     if [[ "$ENV_EXISTS" -eq 0 ]]; then
       echo "[install] creating env '$ENV_NAME' from $f"
       "$SOLVER" create -y -n "$ENV_NAME" -f "$f" \
         || { echo "[install] env create failed (profile $p)" >&2; exit 3; }
       ENV_EXISTS=1
+      ENV_PATH=$(get_env_path)
     else
       echo "[install] layering profile '$p' onto existing env '$ENV_NAME' ($f)"
       "$SOLVER" install -y -n "$ENV_NAME" -f "$f" \
         || { echo "[install] env install failed (profile $p)" >&2; exit 3; }
+    fi
+
+    # Record this profile in the marker with the current env-file hash so
+    # subsequent runs short-circuit.
+    if [[ -n "$ENV_PATH" && -d "$ENV_PATH" ]]; then
+      write_profile_state "$ENV_PATH" "$p" "$(file_hash "$f")"
     fi
   done
 fi

@@ -61,34 +61,81 @@ if [[ -z "$SYSTEM" ]]; then
   echo "[install-taiji] auto-detected --system $SYSTEM"
 fi
 
-# Map --system to the release asset name.
+# Map --system to the release asset name (or asset glob for macOS).
 case "$SYSTEM" in
-  centos) ASSET="taiji-CentOS-x86_64" ;;
-  ubuntu) ASSET="taiji-Ubuntu-x86_64" ;;
+  centos) ASSET="taiji-CentOS-x86_64";  ASSET_GLOB="taiji-CentOS-x86_64" ;;
+  ubuntu) ASSET="taiji-Ubuntu-x86_64";  ASSET_GLOB="taiji-Ubuntu-x86_64" ;;
   macos)
-    # The macOS asset filename varies by macOS major version (taiji-macOS-XX-XX).
-    # We cannot reliably pick this from a script — let the user see the
-    # release page and pass the exact suffix via --version <tag>.
-    echo "[install-taiji] macOS asset filename varies by macOS version." >&2
-    echo "[install-taiji] Browse https://github.com/Taiji-pipeline/Taiji/releases/${VERSION}" >&2
-    echo "[install-taiji] and grab the matching taiji-macOS-XX-XX asset, then drop it at:" >&2
-    echo "[install-taiji]   ${BINDIR}/taiji" >&2
-    echo "[install-taiji] and \`chmod +x\` it. Skipping automatic download." >&2
-    exit 0
+    # macOS asset filenames vary by macOS major version (taiji-macOS-Catalina-10.15,
+    # taiji-macOS-BigSur-11, etc.). We can't pick the right one to download
+    # automatically, but we CAN auto-detect a matching file already in
+    # binaries/ and symlink it without re-downloading.
+    ASSET=""
+    ASSET_GLOB="taiji-macOS-*"
     ;;
   *) echo "unknown --system '$SYSTEM'; expected centos|ubuntu|macos" >&2; exit 2 ;;
 esac
 
-# Build the URL.
+mkdir -p "$BINDIR"
+
+DEST="${BINDIR}/taiji"
+
+# ---- Auto-detection: existing binary on disk -----------------------------
+# Look for a pre-existing matching binary in BINDIR by name (not just the
+# `taiji` symlink). Useful when the user has committed binaries directly,
+# or when an earlier install already downloaded one.
+EXISTING=""
+if [[ "$FORCE" -eq 0 ]]; then
+  # Search for any file matching the system's glob, prefer the most-recent.
+  while IFS= read -r f; do
+    [[ -f "$f" ]] && EXISTING="$f" && break
+  done < <(ls -1t "$BINDIR/"$ASSET_GLOB 2>/dev/null | grep -vE '/taiji$' || true)
+fi
+
+if [[ -n "$EXISTING" ]]; then
+  echo "[install-taiji] found existing matching binary: $EXISTING"
+  if [[ -L "$DEST" || -e "$DEST" ]] && [[ "$(readlink "$DEST" 2>/dev/null || echo "")" == "$(basename "$EXISTING")" ]]; then
+    echo "[install-taiji] symlink already correct: $DEST -> $(basename "$EXISTING")"
+  else
+    # `ln -sfn` atomically replaces an existing symlink without needing rm
+    # first, and `-n` prevents dereferencing if $DEST happens to be a symlink
+    # to a directory.
+    if ln -sfn "$(basename "$EXISTING")" "$DEST" 2>/dev/null; then
+      chmod +x "$EXISTING" 2>/dev/null || true
+      echo "[install-taiji] symlinked: $DEST -> $(basename "$EXISTING")"
+    else
+      echo "[install-taiji] could not (re)create symlink at $DEST" >&2
+      echo "[install-taiji]   if $DEST is a real file owned by another user, remove it manually" >&2
+      echo "[install-taiji]   then re-run, OR call this binary directly: $EXISTING" >&2
+      # Non-fatal — bin/run-taiji.sh's binary auto-pick logic doesn't
+      # require the $DEST symlink (it picks by uname -sm). The symlink is
+      # for convenience; failure to create it shouldn't block the install.
+    fi
+  fi
+  echo "[install-taiji] skipping download (pass --force to re-fetch)"
+  exit 0
+fi
+
+# ---- macOS download path: cannot pick automatically ----------------------
+if [[ "$SYSTEM" == "macos" && -z "$ASSET" ]]; then
+  echo "[install-taiji] no taiji-macOS-* binary found in $BINDIR." >&2
+  echo "[install-taiji] macOS asset filename varies by macOS version, so we can't" >&2
+  echo "[install-taiji] auto-download. Browse:" >&2
+  echo "[install-taiji]   https://github.com/Taiji-pipeline/Taiji/releases/${VERSION}" >&2
+  echo "[install-taiji] and grab the matching taiji-macOS-XX-XX asset, drop it at:" >&2
+  echo "[install-taiji]   ${BINDIR}/taiji-macOS-<version>" >&2
+  echo "[install-taiji] then re-run this script (or just create the symlink yourself):" >&2
+  echo "[install-taiji]   ln -s taiji-macOS-<version> ${BINDIR}/taiji && chmod +x ${BINDIR}/taiji-macOS-<version>" >&2
+  exit 0
+fi
+
+# ---- Linux download path -------------------------------------------------
 if [[ "$VERSION" == "latest" ]]; then
   URL="https://github.com/Taiji-pipeline/Taiji/releases/latest/download/${ASSET}"
 else
   URL="https://github.com/Taiji-pipeline/Taiji/releases/download/${VERSION}/${ASSET}"
 fi
 
-mkdir -p "$BINDIR"
-
-DEST="${BINDIR}/taiji"
 TRACEABLE="${BINDIR}/${ASSET}-${VERSION}"
 
 if [[ -e "$DEST" && "$FORCE" -eq 0 ]]; then
