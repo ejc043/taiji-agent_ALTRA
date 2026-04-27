@@ -156,34 +156,19 @@ def _human_bytes(n: int) -> str:
 
 def _download(url: str, dest: Path, gunzip: bool, log_prefix: str = "") -> int:
     """Stream `url` to `dest`. If gunzip=True, transparently inflate the
-    download stream into `dest`. Returns bytes written to disk."""
+    download stream into `dest`. Returns bytes written to disk.
+
+    Tries wget -> curl -> urllib in that order. wget/curl honor the system
+    CA trust store, which matters on cluster nodes where the conda env's
+    OpenSSL bundle may be missing/stale and Python alone can't validate
+    HTTPS. Override the order with TAIJI_FETCH_DOWNLOADER=wget|curl|urllib.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True)
     tmp = dest.with_suffix(dest.suffix + ".part")
-    bytes_in_stream = 0
-    bytes_written = 0
-    t0 = time.time()
-    last_report = t0
     print(f"{log_prefix}downloading {url}", file=sys.stderr)
+    t0 = time.time()
     try:
-        with urllib.request.urlopen(url, timeout=60) as resp:
-            if gunzip:
-                # Stream-decompress: wrap the response in a GzipFile.
-                src = gzip.GzipFile(fileobj=resp)  # type: ignore[arg-type]
-            else:
-                src = resp
-            with tmp.open("wb") as out:
-                while True:
-                    chunk = src.read(1 << 20)   # 1 MB chunks
-                    if not chunk:
-                        break
-                    out.write(chunk)
-                    bytes_written += len(chunk)
-                    now = time.time()
-                    if now - last_report > 5:
-                        rate = bytes_written / (now - t0 + 1e-9)
-                        print(f"{log_prefix}  ... {_human_bytes(bytes_written)} "
-                              f"({_human_bytes(int(rate))}/s)", file=sys.stderr)
-                        last_report = now
+        bytes_written = _do_download(url, tmp, gunzip, log_prefix, t0)
         tmp.rename(dest)
     except Exception:
         if tmp.exists():
@@ -196,6 +181,80 @@ def _download(url: str, dest: Path, gunzip: bool, log_prefix: str = "") -> int:
     rate = bytes_written / (elapsed + 1e-9)
     print(f"{log_prefix}  -> {dest}  {_human_bytes(bytes_written)} "
           f"in {elapsed:.1f}s ({_human_bytes(int(rate))}/s)", file=sys.stderr)
+    return bytes_written
+
+
+def _do_download(url: str, tmp: Path, gunzip: bool, log_prefix: str, t0: float) -> int:
+    override = os.environ.get("TAIJI_FETCH_DOWNLOADER", "").lower()
+    if override in ("wget", "curl", "urllib"):
+        tools = [override]
+    else:
+        tools = []
+        if shutil.which("wget"):
+            tools.append("wget")
+        if shutil.which("curl"):
+            tools.append("curl")
+        tools.append("urllib")
+
+    last_err: Exception | None = None
+    for tool in tools:
+        try:
+            print(f"{log_prefix}  using {tool}", file=sys.stderr)
+            if tool == "wget":
+                return _via_subprocess(["wget", "-q", "-O", "-", url], tmp, gunzip)
+            if tool == "curl":
+                return _via_subprocess(["curl", "-fsSL", url], tmp, gunzip)
+            return _via_urllib(url, tmp, gunzip, log_prefix, t0)
+        except Exception as e:
+            last_err = e
+            print(f"{log_prefix}  {tool} failed: {e}", file=sys.stderr)
+    assert last_err is not None
+    raise last_err
+
+
+def _via_subprocess(fetch_cmd: list[str], tmp: Path, gunzip: bool) -> int:
+    """Run wget/curl, optionally piping through gunzip into tmp. Bytes written = tmp size."""
+    with tmp.open("wb") as out:
+        if gunzip:
+            p1 = subprocess.Popen(fetch_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            assert p1.stdout is not None
+            p2 = subprocess.Popen(["gunzip", "-c"], stdin=p1.stdout, stdout=out,
+                                  stderr=subprocess.PIPE)
+            p1.stdout.close()
+            _, err2 = p2.communicate()
+            _, err1 = p1.communicate()
+            if p1.returncode != 0:
+                raise RuntimeError(
+                    f"{fetch_cmd[0]} exit {p1.returncode}: {err1.decode(errors='replace')[:300]}")
+            if p2.returncode != 0:
+                raise RuntimeError(
+                    f"gunzip exit {p2.returncode}: {err2.decode(errors='replace')[:300]}")
+        else:
+            r = subprocess.run(fetch_cmd, stdout=out, stderr=subprocess.PIPE)
+            if r.returncode != 0:
+                raise RuntimeError(
+                    f"{fetch_cmd[0]} exit {r.returncode}: {r.stderr.decode(errors='replace')[:300]}")
+    return tmp.stat().st_size
+
+
+def _via_urllib(url: str, tmp: Path, gunzip: bool, log_prefix: str, t0: float) -> int:
+    bytes_written = 0
+    last_report = t0
+    with urllib.request.urlopen(url, timeout=60) as resp:
+        src = gzip.GzipFile(fileobj=resp) if gunzip else resp  # type: ignore[arg-type]
+        with tmp.open("wb") as out:
+            while True:
+                chunk = src.read(1 << 20)   # 1 MB chunks
+                if not chunk:
+                    break
+                out.write(chunk)
+                bytes_written += len(chunk)
+                now = time.time()
+                if now - last_report > 5:
+                    rate = bytes_written / (now - t0 + 1e-9)
+                    print(f"{log_prefix}  ... {_human_bytes(bytes_written)} "
+                          f"({_human_bytes(int(rate))}/s)", file=sys.stderr)
+                    last_report = now
     return bytes_written
 
 
