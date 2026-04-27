@@ -27,6 +27,11 @@
 #   bash bin/install.sh --profile full                     # base + sc + dev
 #   bash bin/install.sh --profile dev                      # base + dev
 #   bash bin/install.sh --env-name my-env                  # non-default env name
+#   bash bin/install.sh --env-prefix /abs/path/envs/foo    # explicit env path
+#                                                          # (overrides auto-detect;
+#                                                          #  use when the env is at
+#                                                          #  a non-standard location
+#                                                          #  e.g. /stg3/.../envs/...)
 #   bash bin/install.sh --skip-taiji                       # env-only
 #   bash bin/install.sh --use-lockfile                     # install from conda-lock
 #   bash bin/install.sh --solver mamba|micromamba|conda    # default: auto-detect
@@ -48,6 +53,7 @@ ENV_DEV="${REPO_ROOT}/environment.dev.yml"
 LOCKFILE="${REPO_ROOT}/conda-lock.linux-64.yml"
 
 ENV_NAME="taiji-agent"
+ENV_PREFIX=""    # explicit absolute path override (--env-prefix); empty = auto-detect
 SYSTEM=""
 PROFILE="base"
 SKIP_TAIJI=0
@@ -62,6 +68,7 @@ while [[ $# -gt 0 ]]; do
     --system)        SYSTEM="$2"; shift 2 ;;
     --profile)       PROFILE="$2"; shift 2 ;;
     --env-name)      ENV_NAME="$2"; shift 2 ;;
+    --env-prefix)    ENV_PREFIX="$2"; shift 2 ;;
     --skip-taiji)    SKIP_TAIJI=1; shift ;;
     --skip-r)        SKIP_R=1; shift ;;
     --use-lockfile)  USE_LOCKFILE=1; shift ;;
@@ -142,10 +149,94 @@ profile_file() {
 # changes the hash and forces a re-install.
 
 # Compute the conda env's filesystem path; empty if env doesn't exist.
+#
+# Tries multiple discovery mechanisms in order, because micromamba/conda
+# only see envs under their CURRENT root prefix — but on shared
+# infrastructure (e.g. UCSD SLURM with envs under /stg3/) the active
+# shell's MAMBA_ROOT_PREFIX may differ from where the env actually lives:
+#
+#   1. --env-prefix flag (user-specified absolute path)
+#   2. $CONDA_PREFIX matches ENV_NAME (env is currently activated)
+#   3. <solver> env list (works when MAMBA_ROOT_PREFIX matches the install)
+#   4. Probe common candidate paths (HOME-relative, $MAMBA_ROOT_PREFIX,
+#      site-specific /stg3/, /opt/, etc.)
 get_env_path() {
-  "$SOLVER" env list 2>/dev/null \
+  # 1. Explicit override
+  if [[ -n "${ENV_PREFIX:-}" ]]; then
+    [[ -d "$ENV_PREFIX" ]] && { echo "$ENV_PREFIX"; return 0; }
+    echo "[install] WARN: --env-prefix '$ENV_PREFIX' does not exist" >&2
+    return 1
+  fi
+
+  # 2. Currently activated env
+  if [[ -n "${CONDA_PREFIX:-}" && "$(basename "$CONDA_PREFIX" 2>/dev/null)" == "$ENV_NAME" ]]; then
+    echo "$CONDA_PREFIX"
+    return 0
+  fi
+
+  # 3. Solver's own listing (only sees its current root prefix)
+  local from_solver
+  from_solver=$("$SOLVER" env list 2>/dev/null \
     | awk -v e="$ENV_NAME" '$1==e {print $NF}' \
-    | head -1
+    | head -1)
+  if [[ -n "$from_solver" && -d "$from_solver" ]]; then
+    echo "$from_solver"
+    return 0
+  fi
+
+  # 4. Probe common candidate locations.
+  local user="${USER:-$(id -un 2>/dev/null)}"
+  local candidates=(
+    "${MAMBA_ROOT_PREFIX:-}/envs/$ENV_NAME"
+    "${CONDA_ENVS_PATH:-}/$ENV_NAME"
+    "$HOME/.local/share/mamba/envs/$ENV_NAME"
+    "$HOME/micromamba/envs/$ENV_NAME"
+    "$HOME/miniforge3/envs/$ENV_NAME"
+    "$HOME/miniconda3/envs/$ENV_NAME"
+    "$HOME/anaconda3/envs/$ENV_NAME"
+    "$HOME/opt/miniconda3/envs/$ENV_NAME"
+    "$HOME/opt/anaconda3/envs/$ENV_NAME"
+    "/opt/conda/envs/$ENV_NAME"
+    "/opt/miniconda3/envs/$ENV_NAME"
+    "/opt/anaconda3/envs/$ENV_NAME"
+    # UCSD-specific shared scratch (Eunice's setup)
+    "/stg3/data1/$user/.local/share/mamba/envs/$ENV_NAME"
+    "/stg3/data1/$user/micromamba/envs/$ENV_NAME"
+    "/stg3/data1/$user/miniconda3/envs/$ENV_NAME"
+  )
+  local c
+  for c in "${candidates[@]}"; do
+    [[ -n "$c" && "$c" != "/envs/$ENV_NAME" && -d "$c" ]] && { echo "$c"; return 0; }
+  done
+
+  # Not found anywhere
+  return 1
+}
+
+# Print where we looked, for debugging "env not detected" surprises.
+debug_env_search() {
+  echo "[install] env-detection debug — checking these locations for '$ENV_NAME':"
+  echo "  --env-prefix:                ${ENV_PREFIX:-(unset)}"
+  echo "  \$CONDA_PREFIX (activated):    ${CONDA_PREFIX:-(unset)}"
+  echo "  $SOLVER env list:"
+  "$SOLVER" env list 2>/dev/null | sed 's/^/    /'
+  echo "  candidate paths (probed in order):"
+  local user="${USER:-$(id -un 2>/dev/null)}"
+  for c in \
+    "${MAMBA_ROOT_PREFIX:-}/envs/$ENV_NAME" \
+    "${CONDA_ENVS_PATH:-}/$ENV_NAME" \
+    "$HOME/.local/share/mamba/envs/$ENV_NAME" \
+    "$HOME/micromamba/envs/$ENV_NAME" \
+    "$HOME/miniforge3/envs/$ENV_NAME" \
+    "$HOME/miniconda3/envs/$ENV_NAME" \
+    "$HOME/anaconda3/envs/$ENV_NAME" \
+    "/opt/conda/envs/$ENV_NAME" \
+    "/stg3/data1/$user/.local/share/mamba/envs/$ENV_NAME" \
+    "/stg3/data1/$user/micromamba/envs/$ENV_NAME"; do
+    if [[ -n "$c" && "$c" != "/envs/$ENV_NAME" ]]; then
+      [[ -d "$c" ]] && echo "    [FOUND] $c" || echo "    [miss]  $c"
+    fi
+  done
 }
 
 # Short SHA-256 of a file (12 hex chars). Uses python3 for portability
@@ -208,8 +299,9 @@ if [[ "$USE_LOCKFILE" -eq 1 ]]; then
     exit 2
   fi
   echo "[install] env source: $LOCKFILE (lockfile, full env)"
-  if "$SOLVER" env list 2>/dev/null | awk '{print $1}' | grep -qx "$ENV_NAME"; then
-    "$SOLVER" remove -y -n "$ENV_NAME" --all
+  EXISTING_PATH=$(get_env_path 2>/dev/null || true)
+  if [[ -n "$EXISTING_PATH" && -d "$EXISTING_PATH" ]]; then
+    "$SOLVER" remove -y --prefix "$EXISTING_PATH" --all
   fi
   "$SOLVER" create -y -n "$ENV_NAME" -f "$LOCKFILE" \
     || { echo "[install] env create from lockfile failed" >&2; exit 3; }
@@ -217,10 +309,19 @@ else
   # ---- Profile-by-profile install (additive + cache-aware) ----
   ENV_EXISTS=0
   ENV_PATH=""
-  if "$SOLVER" env list 2>/dev/null | awk '{print $1}' | grep -qx "$ENV_NAME"; then
+  # get_env_path probes multiple discovery paths (--env-prefix, $CONDA_PREFIX,
+  # `<solver> env list`, and common candidate dirs incl. UCSD's /stg3/...)
+  # so we find the env even when MAMBA_ROOT_PREFIX in the current shell
+  # doesn't point at where the env was originally created.
+  if ENV_PATH=$(get_env_path); then
     ENV_EXISTS=1
-    ENV_PATH=$(get_env_path)
     echo "[install] env '$ENV_NAME' already exists at: $ENV_PATH"
+  else
+    echo "[install] env '$ENV_NAME' not found in any standard location"
+    echo "[install]   (run with TAIJI_DEBUG_ENV=1 or pass --env-prefix to override)"
+  fi
+  if [[ -n "${TAIJI_DEBUG_ENV:-}" ]]; then
+    debug_env_search
   fi
 
   for p in "${PROFILES[@]}"; do
@@ -241,9 +342,17 @@ else
       ENV_EXISTS=1
       ENV_PATH=$(get_env_path)
     else
-      echo "[install] layering profile '$p' onto existing env '$ENV_NAME' ($f)"
-      "$SOLVER" install -y -n "$ENV_NAME" -f "$f" \
-        || { echo "[install] env install failed (profile $p)" >&2; exit 3; }
+      # Use --prefix when we have an absolute path; the solver's -n lookup
+      # only sees envs under its current root prefix, but get_env_path
+      # may have found the env at a different root (e.g. /stg3/...).
+      echo "[install] layering profile '$p' onto existing env '$ENV_PATH' ($f)"
+      if [[ -n "$ENV_PATH" && -d "$ENV_PATH" ]]; then
+        "$SOLVER" install -y --prefix "$ENV_PATH" -f "$f" \
+          || { echo "[install] env install failed (profile $p)" >&2; exit 3; }
+      else
+        "$SOLVER" install -y -n "$ENV_NAME" -f "$f" \
+          || { echo "[install] env install failed (profile $p)" >&2; exit 3; }
+      fi
     fi
 
     # Record this profile in the marker with the current env-file hash so
@@ -257,10 +366,19 @@ fi
 # ---- Activate-then-run helper ----
 # `conda run` historically buffers stdout/stderr; --no-capture-output fixes
 # that. micromamba/mamba run don't have the issue.
-if [[ "$SOLVER" == "conda" ]]; then
-  RUN=("$SOLVER" run --no-capture-output -n "$ENV_NAME")
+# Prefer --prefix <path> over -n <name> when we have an absolute env path —
+# avoids "env not found" on shells where MAMBA_ROOT_PREFIX doesn't point
+# at the env's actual location.
+ENV_SELECTOR=()
+if [[ -n "$ENV_PATH" && -d "$ENV_PATH" ]]; then
+  ENV_SELECTOR=(--prefix "$ENV_PATH")
 else
-  RUN=("$SOLVER" run -n "$ENV_NAME")
+  ENV_SELECTOR=(-n "$ENV_NAME")
+fi
+if [[ "$SOLVER" == "conda" ]]; then
+  RUN=("$SOLVER" run --no-capture-output "${ENV_SELECTOR[@]}")
+else
+  RUN=("$SOLVER" run "${ENV_SELECTOR[@]}")
 fi
 
 # ---- R postinstall (only when sc profile is in scope) ----
