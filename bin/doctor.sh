@@ -11,11 +11,14 @@
 # the build.
 #
 # Usage:
-#   bash bin/doctor.sh                        # check all skills
-#   bash bin/doctor.sh --skill pseudobulk-construct
-#   bash bin/doctor.sh --no-r                 # skip R-package checks (faster)
-#   bash bin/doctor.sh --quiet                # only PASS/FAIL totals
-#   bash bin/doctor.sh --json                 # machine-readable output
+#   bash bin/doctor.sh                                # check all skills
+#   bash bin/doctor.sh --skill pseudobulk-construct   # one skill only
+#   bash bin/doctor.sh --profile base                 # only base-profile skills
+#   bash bin/doctor.sh --profile sc                   # base + sc skills
+#   bash bin/doctor.sh --profile full                 # base + sc + dev (everything)
+#   bash bin/doctor.sh --no-r                         # skip R-package checks
+#   bash bin/doctor.sh --quiet                        # only PASS/FAIL totals
+#   bash bin/doctor.sh --json                         # machine-readable output
 
 set -euo pipefail
 
@@ -23,17 +26,19 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SKILLS_DIR="${REPO_ROOT}/skills"
 
 ONLY_SKILL=""
+ONLY_PROFILE=""
 SKIP_R=0
 QUIET=0
 JSON=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --skill) ONLY_SKILL="$2"; shift 2 ;;
-    --no-r)  SKIP_R=1; shift ;;
-    --quiet) QUIET=1; shift ;;
-    --json)  JSON=1; shift ;;
-    -h|--help) sed -n '2,18p' "$0"; exit 0 ;;
+    --skill)   ONLY_SKILL="$2"; shift 2 ;;
+    --profile) ONLY_PROFILE="$2"; shift 2 ;;
+    --no-r)    SKIP_R=1; shift ;;
+    --quiet)   QUIET=1; shift ;;
+    --json)    JSON=1; shift ;;
+    -h|--help) sed -n '2,22p' "$0"; exit 0 ;;
     *) echo "unknown arg: $1" >&2; exit 2 ;;
   esac
 done
@@ -50,14 +55,30 @@ SKIP_R_ARG=$([[ $SKIP_R -eq 1 ]] && echo "1" || echo "0")
 QUIET_ARG=$([[ $QUIET -eq 1 ]] && echo "1" || echo "0")
 JSON_ARG=$([[ $JSON -eq 1 ]] && echo "1" || echo "0")
 
-"$PY" - "$SKILLS_DIR" "$ONLY_SKILL" "$SKIP_R_ARG" "$QUIET_ARG" "$JSON_ARG" <<'PY_EOF'
+"$PY" - "$SKILLS_DIR" "$ONLY_SKILL" "$SKIP_R_ARG" "$QUIET_ARG" "$JSON_ARG" "$ONLY_PROFILE" <<'PY_EOF'
 import json, os, shutil, subprocess, sys
 from pathlib import Path
 
-skills_dir, only_skill, skip_r_arg, quiet_arg, json_arg = sys.argv[1:6]
+skills_dir, only_skill, skip_r_arg, quiet_arg, json_arg, only_profile = sys.argv[1:7]
 SKIP_R = (skip_r_arg == "1")
 QUIET = (quiet_arg == "1")
 JSON = (json_arg == "1")
+ONLY_PROFILE = only_profile.strip()
+# Profile composition: passing --profile sc filters to {base, sc}; --profile dev
+# filters to {base, dev}; --profile full means everything; empty means no filter.
+if ONLY_PROFILE:
+    PROFILE_FILTER = {
+        "base": {"base"},
+        "sc":   {"base", "sc"},
+        "dev":  {"base", "dev"},
+        "full": {"base", "sc", "dev"},
+    }.get(ONLY_PROFILE)
+    if PROFILE_FILTER is None:
+        print(f"doctor: unknown --profile '{ONLY_PROFILE}' "
+              "(expected: base|sc|dev|full)", file=sys.stderr)
+        sys.exit(2)
+else:
+    PROFILE_FILTER = None  # no filter
 
 # Minimal YAML loader without pyyaml dependency — fall back to pyyaml if
 # available so users on the conda env get the real parser.
@@ -174,12 +195,28 @@ def run_for_skill(yml_path):
 # --- Walk skills ---
 skills_root = Path(skills_dir)
 yml_paths = sorted(skills_root.glob("*/dependencies.yml"))
+
 if only_skill:
     yml_paths = [p for p in yml_paths if p.parent.name == only_skill]
     if not yml_paths:
         print(f"doctor: no dependencies.yml found for skill '{only_skill}'",
               file=sys.stderr)
         sys.exit(2)
+
+# Apply profile filter: skip skills whose `profile:` field isn't in the
+# requested profile set. Skills without a profile field are treated as `base`
+# for backwards compat.
+if PROFILE_FILTER is not None:
+    filtered: list[Path] = []
+    for p in yml_paths:
+        try:
+            spec = load_yaml(p.read_text()) or {}
+            skill_profile = spec.get("profile", "base")
+        except Exception:
+            skill_profile = "base"
+        if skill_profile in PROFILE_FILTER:
+            filtered.append(p)
+    yml_paths = filtered
 
 reports = [run_for_skill(p) for p in yml_paths]
 overall_ok = all(not r["missing_required"] for r in reports)

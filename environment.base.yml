@@ -1,0 +1,41 @@
+# taiji-agent — BASE profile.
+#
+# Minimum env to run:
+#   - detect-dataset-type
+#   - build-taiji-input
+#   - fetch-references
+#   - taiji-runner
+#   - workflow-log
+#
+# Sufficient for ALL bulk RNA-seq / ATAC-seq / HiC pipelines (the common case).
+# Adds NO R, NO Seurat, NO Bioconductor. Single-cell users layer on the `sc`
+# profile (environment.sc.yml) on top of this.
+#
+# Disk: ~500 MB.  Solve time on conda: ~5 min.
+
+name: taiji-agent
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  # ---- Python interpreter + std deps ----
+  - python=3.11
+  - pip>=24.0
+
+  # ---- Python packages used by the taiji-agent CLI scaffold + base skills ----
+  - click>=8.1
+  - pydantic>=2.5
+  - pyyaml>=6.0
+  - jinja2>=3.1
+  - rich>=13.7
+  - pandas>=2.0           # build-taiji-input xlsx I/O + taiji-runner xlsx parsing
+  - openpyxl>=3.1         # xlsx reader/writer
+
+  # ---- Peak caller (used by Taiji + pseudobulk-construct's --peak-caller macs3
+  #      auto-detect; no harm having it in base) ----
+  - macs3>=3.0
+
+  # ---- Local taiji-agent Python package ----
+  - pip:
+      - -e .

@@ -1,23 +1,39 @@
 #!/usr/bin/env bash
 # install.sh — one-command installer for the taiji-agent.
 #
-# Builds the conda env, runs the R postinstall (SeuratDisk + MuDataSeurat from
-# GitHub), and installs the Taiji binary for the chosen system. Idempotent:
-# re-running on an existing install updates whatever needs updating and is a
-# no-op for what's already in place.
+# Builds a conda env using composable PROFILES so users only install what
+# their dataset actually needs. Then runs the R postinstall (SeuratDisk +
+# MuDataSeurat from GitHub, only if the SC profile is present) and installs
+# the Taiji binary. Idempotent: re-running on an existing install layers
+# additional profiles on top without rebuilding from scratch.
+#
+# Profiles:
+#   base   Python + xlsx + MACS3 + local taiji-agent package
+#          Enables: detect-dataset-type, build-taiji-input, fetch-references,
+#                   taiji-runner, workflow-log
+#          ~500 MB,  ~5 min
+#   sc     R + Seurat + Signac + Bioconductor (additive on top of base)
+#          Enables: pseudobulk-construct
+#          +3-4 GB, +15-30 min
+#   dev    pytest + pytest-cov + ruff + mypy + ipython
+#          Enables: development on the skills themselves
+#          +500 MB, +3 min
+#   full   = base + sc + dev (everything)
 #
 # Usage:
-#   bash bin/install.sh                              # full install, auto-detect OS
-#   bash bin/install.sh --system centos              # explicit Taiji binary target
-#   bash bin/install.sh --env-name my-taiji-env      # non-default env name
-#   bash bin/install.sh --skip-taiji                 # env-only, no Taiji binary
-#   bash bin/install.sh --skip-r                     # env + Taiji, skip postinstall.R
-#   bash bin/install.sh --use-lockfile               # install from conda-lock.linux-64.yml
+#   bash bin/install.sh                                    # base only (default)
+#   bash bin/install.sh --system macos                     # base + macOS taiji binary
+#   bash bin/install.sh --profile sc                       # base + sc
+#   bash bin/install.sh --profile full                     # base + sc + dev
+#   bash bin/install.sh --profile dev                      # base + dev
+#   bash bin/install.sh --env-name my-env                  # non-default env name
+#   bash bin/install.sh --skip-taiji                       # env-only
+#   bash bin/install.sh --use-lockfile                     # install from conda-lock
 #   bash bin/install.sh --solver mamba|micromamba|conda    # default: micromamba
 #
 # Exit codes:
 #   0 ok
-#   2 invalid args / missing solver binary
+#   2 invalid args / missing solver
 #   3 conda env create/update failed
 #   4 postinstall.R failed
 #   5 install-taiji.sh failed
@@ -25,21 +41,25 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_FILE="${REPO_ROOT}/environment.yml"
+ENV_BASE="${REPO_ROOT}/environment.base.yml"
+ENV_SC="${REPO_ROOT}/environment.sc.yml"
+ENV_DEV="${REPO_ROOT}/environment.dev.yml"
 LOCKFILE="${REPO_ROOT}/conda-lock.linux-64.yml"
 
 ENV_NAME="taiji-agent"
 SYSTEM=""
+PROFILE="base"
 SKIP_TAIJI=0
-SKIP_R=0
+SKIP_R=""    # tri-state: "" auto-decide, 1 force-skip, 0 force-run
 USE_LOCKFILE=0
 SOLVER="micromamba"
 
-usage() { sed -n '2,17p' "$0"; exit "${1:-0}"; }
+usage() { sed -n '2,40p' "$0"; exit "${1:-0}"; }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --system)        SYSTEM="$2"; shift 2 ;;
+    --profile)       PROFILE="$2"; shift 2 ;;
     --env-name)      ENV_NAME="$2"; shift 2 ;;
     --skip-taiji)    SKIP_TAIJI=1; shift ;;
     --skip-r)        SKIP_R=1; shift ;;
@@ -50,7 +70,27 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# ---- Resolve solver binary ----
+# ---- Validate + expand profile ----
+case "$PROFILE" in
+  base)  PROFILES=(base) ;;
+  sc)    PROFILES=(base sc) ;;
+  dev)   PROFILES=(base dev) ;;
+  full)  PROFILES=(base sc dev) ;;
+  *) echo "unknown profile '$PROFILE' (expected: base|sc|dev|full)" >&2; exit 2 ;;
+esac
+echo "[install] profile=$PROFILE  (= ${PROFILES[*]})"
+
+# Decide whether to run the R postinstall: only when the sc profile is in.
+RUN_POSTINSTALL_R=0
+for p in "${PROFILES[@]}"; do
+  [[ "$p" == "sc" ]] && RUN_POSTINSTALL_R=1
+done
+# Honor explicit --skip-r override.
+if [[ "$SKIP_R" == "1" ]]; then
+  RUN_POSTINSTALL_R=0
+fi
+
+# ---- Resolve solver ----
 if ! command -v "$SOLVER" >/dev/null 2>&1; then
   echo "[install] solver '$SOLVER' not on PATH." >&2
   echo "[install] install micromamba: https://mamba.readthedocs.io/en/latest/micromamba-installation.html" >&2
@@ -59,49 +99,76 @@ if ! command -v "$SOLVER" >/dev/null 2>&1; then
 fi
 echo "[install] using solver: $SOLVER ($(command -v "$SOLVER"))"
 
-# ---- Pick the source of truth: lockfile or environment.yml ----
-SRC_FILE="$ENV_FILE"
+# ---- Map profile -> env-file path ----
+profile_file() {
+  case "$1" in
+    base) echo "$ENV_BASE" ;;
+    sc)   echo "$ENV_SC" ;;
+    dev)  echo "$ENV_DEV" ;;
+    *)    echo "" ;;
+  esac
+}
+
+# Verify profile files exist before doing anything.
+for p in "${PROFILES[@]}"; do
+  f=$(profile_file "$p")
+  if [[ ! -f "$f" ]]; then
+    echo "[install] profile file missing: $f" >&2
+    exit 2
+  fi
+done
+
+# ---- Lockfile path takes priority if --use-lockfile is set ----
 if [[ "$USE_LOCKFILE" -eq 1 ]]; then
   if [[ ! -f "$LOCKFILE" ]]; then
     echo "[install] --use-lockfile requested but $LOCKFILE missing." >&2
     echo "[install] generate it with: conda-lock --file environment.yml --platform linux-64" >&2
     exit 2
   fi
-  SRC_FILE="$LOCKFILE"
-fi
-echo "[install] env source: $SRC_FILE"
-
-# ---- Create or update the env ----
-# `micromamba env list` is the portable way to check existence across solvers.
-if "$SOLVER" env list 2>/dev/null | awk '{print $1}' | grep -qx "$ENV_NAME"; then
-  echo "[install] env '$ENV_NAME' exists — updating in place."
-  # `update` for environment.yml; for lockfile-based installs, recreating is
-  # the canonical path because lockfiles are immutable snapshots.
-  if [[ "$USE_LOCKFILE" -eq 1 ]]; then
+  echo "[install] env source: $LOCKFILE (lockfile, full env)"
+  if "$SOLVER" env list 2>/dev/null | awk '{print $1}' | grep -qx "$ENV_NAME"; then
     "$SOLVER" remove -y -n "$ENV_NAME" --all
-    "$SOLVER" create  -y -n "$ENV_NAME" -f "$SRC_FILE"
-  else
-    "$SOLVER" install -y -n "$ENV_NAME" -f "$SRC_FILE"
   fi
+  "$SOLVER" create -y -n "$ENV_NAME" -f "$LOCKFILE" \
+    || { echo "[install] env create from lockfile failed" >&2; exit 3; }
 else
-  echo "[install] creating env '$ENV_NAME' from $SRC_FILE"
-  "$SOLVER" create -y -n "$ENV_NAME" -f "$SRC_FILE"
-fi || { echo "[install] env create/update failed" >&2; exit 3; }
+  # ---- Profile-by-profile install (additive) ----
+  ENV_EXISTS=0
+  if "$SOLVER" env list 2>/dev/null | awk '{print $1}' | grep -qx "$ENV_NAME"; then
+    ENV_EXISTS=1
+  fi
 
-# ---- Activate-then-run helper. micromamba's `run` subcommand is the most
-# portable way to execute a command inside the env without sourcing
-# activate scripts (which differ across shells).
+  for p in "${PROFILES[@]}"; do
+    f=$(profile_file "$p")
+    if [[ "$ENV_EXISTS" -eq 0 ]]; then
+      echo "[install] creating env '$ENV_NAME' from $f"
+      "$SOLVER" create -y -n "$ENV_NAME" -f "$f" \
+        || { echo "[install] env create failed (profile $p)" >&2; exit 3; }
+      ENV_EXISTS=1
+    else
+      echo "[install] layering profile '$p' onto existing env '$ENV_NAME' ($f)"
+      "$SOLVER" install -y -n "$ENV_NAME" -f "$f" \
+        || { echo "[install] env install failed (profile $p)" >&2; exit 3; }
+    fi
+  done
+fi
+
+# ---- Activate-then-run helper ----
 RUN=("$SOLVER" run -n "$ENV_NAME")
 
-# ---- R postinstall: SeuratDisk + MuDataSeurat from GitHub ----
-if [[ "$SKIP_R" -eq 0 ]]; then
+# ---- R postinstall (only when sc profile is in scope) ----
+if [[ "$RUN_POSTINSTALL_R" -eq 1 ]]; then
   echo "[install] running R postinstall (SeuratDisk + MuDataSeurat) ..."
   if ! "${RUN[@]}" Rscript "${REPO_ROOT}/bin/postinstall.R"; then
     echo "[install] postinstall.R failed; investigate before proceeding." >&2
     exit 4
   fi
 else
-  echo "[install] --skip-r set; skipping GitHub R-package install."
+  if [[ "$SKIP_R" == "1" ]]; then
+    echo "[install] --skip-r set; skipping GitHub R-package install."
+  else
+    echo "[install] sc profile not in scope; skipping R postinstall."
+  fi
 fi
 
 # ---- Taiji binary ----
@@ -116,16 +183,31 @@ else
   echo "[install] --skip-taiji set; not downloading the Taiji binary."
 fi
 
+# ---- Final summary ----
+TAIJI_PATH="(skipped)"
+[[ "$SKIP_TAIJI" -eq 0 ]] && TAIJI_PATH="${REPO_ROOT}/binaries/taiji"
+
 cat <<EOF
 
 [install] SUCCESS
   env name:       $ENV_NAME
-  source:         $SRC_FILE
-  Taiji binary:   $( [[ "$SKIP_TAIJI" -eq 0 ]] && echo "${REPO_ROOT}/binaries/taiji" || echo "(skipped)" )
+  profile:        $PROFILE  (=${PROFILES[*]})
+  Taiji binary:   $TAIJI_PATH
 
 Activate with:
   $SOLVER activate $ENV_NAME
 
 Verify everything is wired up:
-  bash bin/doctor.sh
+  bash bin/doctor.sh --profile $PROFILE
 EOF
+
+# ---- Profile-upgrade hint ----
+if [[ "$PROFILE" == "base" ]]; then
+  cat <<EOF
+
+NOTE: you installed the 'base' profile (bulk-only).
+If you later need single-cell skills (pseudobulk-construct), upgrade with:
+  bash bin/install.sh --profile sc
+which adds R + Seurat/Signac on top of the existing env (no full reinstall).
+EOF
+fi

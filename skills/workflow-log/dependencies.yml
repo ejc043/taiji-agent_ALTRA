@@ -2,6 +2,7 @@
 # Read by bin/doctor.sh.
 
 skill: workflow-log
+profile: base       # pure-Python file writer; needs only base env
 purpose: Per-run audit log (.md + .jsonl) for the Taiji-agent workflow.
 
 binaries: []           # Pure-Python skill; the optional doctor.sh snapshot

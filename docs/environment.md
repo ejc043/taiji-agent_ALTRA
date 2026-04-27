@@ -4,36 +4,101 @@ This repo uses conda + lockfiles + (optionally) `conda-pack` to ship a
 reproducible, "Docker-like" environment to SLURM nodes that don't allow
 container runtimes. This doc walks through:
 
-1. The one-command install (Tier 1).
-2. Locking the env for byte-exact reproducibility (Tier 2).
-3. Packing the env into a portable tarball (Tier 3).
+1. **Profiles** — install only what your dataset needs (the headline change as of 2026-04-26).
+2. The one-command install (Tier 1).
+3. Locking the env for byte-exact reproducibility (Tier 2).
+4. Packing the env into a portable tarball (Tier 3).
+
+## Profiles
+
+Not every dataset needs the full R + Seurat/Signac stack. The env is split
+into composable profiles so users only install what they'll use:
+
+| Profile | Contents | Enables | Disk | Time |
+|---------|----------|---------|------|------|
+| `base` (default) | Python + xlsx I/O + MACS3 + local taiji-agent package | 5 of 6 skills (everything except pseudobulk-construct) | ~500 MB | ~5 min |
+| `sc` (additive) | R-base + r-seurat + bioconductor-signac + supporting Bioconductor + r-remotes + GitHub R packages (SeuratDisk, MuDataSeurat) | pseudobulk-construct | +3-4 GB | +15-30 min |
+| `dev` (orthogonal) | pytest + pytest-cov + ruff + mypy + ipython | author tooling for editing the skills themselves | +500 MB | +3 min |
+| `full` | base + sc + dev | all skills + dev tooling | ~5 GB | ~25 min |
+
+**Profiles compose additively**: passing `--profile sc` always installs `base`
+first, then layers SC on top. A user who installed `base` and later wants SC
+can run `bash bin/install.sh --profile sc` and only the new R packages get
+added — no rebuild.
+
+### Per-skill membership
+
+Each skill's `dependencies.yml` declares which profile it belongs to:
+
+```yaml
+# skills/detect-dataset-type/dependencies.yml
+profile: base
+
+# skills/pseudobulk-construct/dependencies.yml
+profile: sc
+```
+
+`bin/doctor.sh --profile <name>` filters its verification table to skills
+that actually need the requested profile, so you don't see false-failures
+for SC skills when you only installed base.
+
+### Picking a profile
+
+| If your dataset is... | Use profile |
+|------------------------|-------------|
+| Bulk RNA-seq / ATAC-seq / HiC (TSV / narrowPeak / bedpe) | `base` |
+| Single-cell (.rds / .h5ad / .h5mu) requiring pseudobulk | `sc` |
+| Mixed cohort with both bulk + SC samples | `sc` (covers both branches) |
+| Hacking on the skills themselves | `dev` (or `full` if also processing data) |
+| Unsure | `base` — upgrade with `--profile sc` later if needed |
+
+### Auto-detected install
+
+`bin/auto-install.sh` runs `detect-dataset-type` on your data directory and
+picks the profile for you:
+
+```bash
+bash bin/auto-install.sh --data-dir data/<dataset> --system macos
+# → classifies bulk → installs --profile base
+# → classifies single-cell → installs --profile sc
+# → mixed → installs --profile sc
+
+bash bin/auto-install.sh --data-dir data/<dataset> --system macos --dry-run
+# → prints decision without installing
+```
+
+Useful when onboarding a new collaborator who's not yet sure what's in their
+dataset.
 
 ## Tier 1 — One-command install
 
 The end-to-end install:
 
 ```bash
-bash bin/install.sh
+bash bin/install.sh                          # base profile, default
 ```
 
 That single command:
 
-1. Creates the conda env `taiji-agent` from `environment.yml` using
+1. Creates the conda env `taiji-agent` from `environment.base.yml` using
    `micromamba` (5-10× faster than `conda`; falls back to `mamba`/`conda`
    if you pass `--solver`).
-2. Runs `bin/postinstall.R` inside the env to install SeuratDisk and
-   MuDataSeurat from GitHub (these are not on bioconda).
+2. If profile includes `sc`: runs `bin/postinstall.R` inside the env to
+   install SeuratDisk and MuDataSeurat from GitHub (these are not on bioconda).
 3. Runs `bin/install-taiji.sh` to download the Taiji binary for the
    current OS into `binaries/taiji`.
 
 Common variants:
 
 ```bash
-bash bin/install.sh --system centos          # explicit Taiji target
-bash bin/install.sh --skip-taiji             # env only
-bash bin/install.sh --skip-r                 # env + Taiji, no GitHub R packages
-bash bin/install.sh --solver mamba           # if micromamba isn't installed
-bash bin/install.sh --use-lockfile           # install from conda-lock.linux-64.yml
+bash bin/install.sh --system centos                    # base + CentOS Taiji binary
+bash bin/install.sh --profile sc                       # base + sc (R stack)
+bash bin/install.sh --profile full                     # base + sc + dev
+bash bin/install.sh --profile dev                      # base + dev
+bash bin/install.sh --skip-taiji                       # env-only, no Taiji binary
+bash bin/install.sh --skip-r                           # force-skip postinstall.R
+bash bin/install.sh --solver mamba                     # if micromamba isn't installed
+bash bin/install.sh --use-lockfile                     # install full env from conda-lock
 ```
 
 After the install finishes:

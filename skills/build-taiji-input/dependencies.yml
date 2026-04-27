@@ -2,6 +2,7 @@
 # Read by bin/doctor.sh to verify the install before a run.
 
 skill: build-taiji-input
+profile: base       # pure-Python xlsx I/O; needs only base env
 purpose: Build the bulk-Taiji input xlsx (Active + active_metadata sheets).
 
 binaries: []           # Pure-Python; no system binaries needed.

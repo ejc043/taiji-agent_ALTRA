@@ -2,6 +2,7 @@
 # Read by bin/doctor.sh to verify the install before a run.
 
 skill: detect-dataset-type
+profile: base       # pure-Python; needs only base env (no R)
 purpose: Classify a directory as bulk / single-cell / mixed / unknown.
 
 binaries: []           # Pure-Python skill; no external binaries needed.

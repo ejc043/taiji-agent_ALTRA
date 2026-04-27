@@ -1,0 +1,18 @@
+# taiji-agent — DEV profile.
+#
+# Author tooling (test runner, linter, type checker). Orthogonal to base/sc;
+# install on top of either if you're hacking on the skills themselves. Not
+# needed for running the pipeline on real data.
+#
+# Disk: +500 MB.  Solve time: ~3 min.
+
+name: taiji-agent
+channels:
+  - conda-forge
+
+dependencies:
+  - pytest>=7.4
+  - pytest-cov>=4.1
+  - ruff>=0.4
+  - mypy>=1.8
+  - ipython          # convenience REPL when poking at the skills

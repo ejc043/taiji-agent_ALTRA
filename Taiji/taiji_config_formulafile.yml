@@ -1,0 +1,70 @@
+# The path to a file specifying the input data sets. The software come with
+# an example file named "input.yaml".
+input: "[insert_input_filepath_here]"
+
+# Directory containing the results.
+output_dir: "[insert_output_directory_here]"
+
+# Use if writing to a tmp file to avoid load on head node. Otherwise leave commented.
+tmp_dir: "/stg3/data1/eunice/Projects/JohnChang/TCF1/data/tmp"
+
+# The path to the picard tools.
+picard: "/stg3/data1/eunice/bin/picard.jar"
+
+# Complete genome in a single plain FASTA file. Genomes can be downloaded from http://hgdownload.cse.ucsc.edu/downloads.html.
+# For example, this link gives you the complete human genome:
+# http://hgdownload.cse.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz
+# Important: Remember to ungzip the file using "gzip -d hg38.fa.gz"!
+genome: "[insert_genome_filepath_here]"
+#genome: "/stg3/data1/eunice/Annotation/Genome/Mus_musculus/UCSC/mm10/Sequence/WholeGenomeFasta/genome.fa"
+
+# Genome annotation in *GTF* format. For human and mouse, Gencode annotations are
+# available at http://www.gencodegenes.org/
+#annotation: "/stg3/data1/eunice/Annotation/GTF/hg38.gencode.v40_autosomes.gtf"
+#annotation : "/stg3/data1/eunice/Annotation/Genome/hg19/gencode.v19.annotation.gtf"
+annotation: "/stg3/data1/eunice/Annotation/GTF/gencode.vM10.annotation.gtf"
+
+# MEME format file containing motifs
+#motif_file: "/stg3/data1/eunice/Annotation/motifDataBase/cisBP_human.meme"
+motif_file: "/stg3/data2/resource3/data/Motif_Databases/cisbp_mouse_2.meme"
+
+# Resource allocation requests
+resource:
+    ATAC_Align:
+        memory: 40
+    RNA_Align:
+        memory: 40
+    RNA_Make_Expr_Table:
+        memory: 25
+    ATAC_Find_TFBS_Union:
+        memory: 10
+    ATAC_Get_TFBS:
+        memory: 10
+
+################################################################################
+# You don't have to physically provide the following files. But you do need to
+# specify the locations where these files will be generated automatically if
+# they are absent. Note the program DO NOT overwrite existing files/directories
+# so that you can provide your own indices without having the program generate
+# them. If you want to re-generate indices, make sure delete correponding
+# files/directories first.
+################################################################################
+
+# Genome sequence index
+#genome_index: "/home/barton/Data/Sequence/GRCh38.index"
+
+# BWA Index
+#
+# bwa_index: "/stg3/data1/eunice/Annotation/Genome/hg38_bwa/"
+# bwa_index: "/stg3/data1/eunice/Annotation/Genome/hg19_bwa"
+#bwa_index: "/stg3/data1/eunice/Annotation/Genome/Mus_musculus/UCSC/mm10/Sequence/BWAIndex"
+
+# Uncomment following sections if you want to analyze raw RNA-seq fastq files.
+# Note: STAR aligner uses a lot memory.
+# For example, you need at least 30G memory for human genome.
+
+# Directory containing the STAR indices.
+#star_index: "/home/barton/Data/Sequence/STARIndex/"
+
+# RSEM index prefix
+#rsem_index: "/home/barton/Data/Sequence/RSEMIndex/"

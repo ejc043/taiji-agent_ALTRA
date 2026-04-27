@@ -2,6 +2,9 @@
 # Read by bin/doctor.sh.
 
 skill: taiji-runner
+profile: base       # Python orchestrator + shells out to the Taiji binary;
+                    # the binary itself is platform-specific and installed
+                    # separately via bin/install-taiji.sh
 purpose: Per-sample Taiji 1.3.0 orchestrator — splits xlsx into per-sample
          TSVs + materialized configs, invokes `taiji run` per sample,
          captures + validates output presence per sample.

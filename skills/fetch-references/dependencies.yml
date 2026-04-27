@@ -2,6 +2,7 @@
 # Read by bin/doctor.sh.
 
 skill: fetch-references
+profile: base       # urllib + pyyaml; needs only base env
 purpose: Idempotently download per-genome reference data (FASTA + GTF + MEME)
          from stable upstream hosts into <output_dir>/dependencies_data/.
 

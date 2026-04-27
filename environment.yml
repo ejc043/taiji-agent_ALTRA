@@ -1,19 +1,23 @@
-# taiji-agent — single-source-of-truth conda env.
+# DEPRECATED — kept as a back-compat alias for "install everything"
 #
-# Covers everything the three skills (detect-dataset-type, build-taiji-input,
-# pseudobulk-construct) need at runtime. The Taiji binary itself is NOT in
-# here — install it once via `bash bin/install-taiji.sh --system <centos|ubuntu|macos>`
-# (it's a self-contained executable from the Taiji-pipeline GitHub releases).
-# Two R packages (SeuratDisk, MuDataSeurat) are GitHub-only and are pulled
-# in by `bin/postinstall.R` after `conda env create` finishes.
+# As of 2026-04-26 the env is split into composable profiles:
 #
-# Resolver hint: --strict-channel-priority is recommended because the
-# pinned MACS3 + Bioconductor versions only resolve cleanly when bioconda
-# wins ties over conda-forge.
+#   environment.base.yml   bulk-only Python skills + MACS3 (~500 MB, ~5 min)
+#   environment.sc.yml     adds R + Seurat/Signac for pseudobulk-construct (+3-4 GB)
+#   environment.dev.yml    pytest/ruff/mypy/ipython (+500 MB)
 #
-# To create:   micromamba create -n taiji-agent -f environment.yml
-# To update:   micromamba install  -n taiji-agent -f environment.yml
-# Lockfile:    conda-lock --file environment.yml --platform linux-64
+# Install via:
+#
+#   bash bin/install.sh --system <os>                     # base only (default)
+#   bash bin/install.sh --system <os> --profile sc        # base + sc
+#   bash bin/install.sh --system <os> --profile full      # base + sc + dev
+#
+#   bash bin/auto-install.sh --data-dir <path>            # detects bulk/SC, picks profile
+#
+# This file now equals base + sc + dev for users / scripts that still call
+# `conda env create -f environment.yml` directly. New users should switch to
+# bin/install.sh which handles profile composition + post-install steps
+# (SeuratDisk + MuDataSeurat + Taiji binary).
 
 name: taiji-agent
 channels:
@@ -21,26 +25,19 @@ channels:
   - bioconda
 
 dependencies:
-  # ---- Python interpreter + std deps ----
+  # ---- Base profile ----
   - python=3.11
   - pip>=24.0
-
-  # ---- Python packages used by the taiji-agent CLI scaffold + skills ----
   - click>=8.1
   - pydantic>=2.5
   - pyyaml>=6.0
   - jinja2>=3.1
   - rich>=13.7
-  - pandas>=2.0           # build-taiji-input xlsx I/O
-  - openpyxl>=3.1         # build-taiji-input xlsx writer
+  - pandas>=2.0
+  - openpyxl>=3.1
+  - macs3>=3.0
 
-  # ---- Dev tools (kept in the same env to keep the install path simple) ----
-  - pytest>=7.4
-  - pytest-cov>=4.1
-  - ruff>=0.4
-  - mypy>=1.8
-
-  # ---- R interpreter + Seurat / Signac stack (pseudobulk-construct) ----
+  # ---- SC profile ----
   - r-base>=4.3
   - r-seurat>=5.0
   - bioconductor-signac>=1.12
@@ -49,22 +46,13 @@ dependencies:
   - r-dplyr
   - r-optparse
   - r-jsonlite
-  - r-remotes               # required by bin/postinstall.R for the GitHub-only packages
+  - r-remotes
 
-  # ---- Peak caller. MACS3 ships via the Signac install path the user
-  #      confirmed; pin it here to make the install deterministic instead of
-  #      relying on transitive resolution.
-  - macs3>=3.0
+  # ---- Dev profile ----
+  - pytest>=7.4
+  - pytest-cov>=4.1
+  - ruff>=0.4
+  - mypy>=1.8
 
-  # ---- pip-only packages (none currently; placeholder for future) ----
   - pip:
       - -e .
-
-# ---- Notes ----
-# * samtools, BWA, Picard, STAR, RSEM intentionally NOT included. All inputs
-#   to the agent are pre-aligned/pre-quantified, so Taiji has no occasion
-#   to invoke them. Add them back here if a future workflow needs alignment.
-# * The lockfile (conda-lock.linux-64.yml) — when present — pins every
-#   transitive package + version + hash for byte-reproducible installs.
-#   Generate it with `conda-lock --file environment.yml --platform linux-64`
-#   and commit the result.

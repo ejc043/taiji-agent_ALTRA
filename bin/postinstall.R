@@ -15,11 +15,20 @@
 
 args <- commandArgs(trailingOnly = TRUE)
 force <- "--force" %in% args
+quiet_skip <- "--quiet-skip-when-missing" %in% args
 
 suppressPackageStartupMessages({
   if (!requireNamespace("remotes", quietly = TRUE)) {
-    stop("remotes package missing — was the conda env built? ",
-         "Run `micromamba install -n taiji-agent r-remotes` first.")
+    if (quiet_skip) {
+      # Called by bin/install.sh under --profile base where the SC stack
+      # (and therefore r-remotes) is intentionally absent. No-op cleanly.
+      message("[postinstall] r-remotes not installed; sc profile not in scope. ",
+              "Skipping GitHub R-package install.")
+      quit(status = 0)
+    }
+    stop("remotes package missing — was the conda env built with --profile sc ",
+         "or full? Re-run `bash bin/install.sh --profile sc` or install ",
+         "r-remotes manually first.")
   }
 })
 

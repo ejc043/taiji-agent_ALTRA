@@ -1,0 +1,36 @@
+# taiji-agent — SC (single-cell) profile.
+#
+# Layers on top of environment.base.yml. Adds the R + Seurat/Signac stack
+# needed by pseudobulk-construct (the only SC-using skill).
+#
+# Install order:
+#   1. environment.base.yml      (required first)
+#   2. environment.sc.yml        (this file; layers R packages)
+#   3. bin/postinstall.R         (installs SeuratDisk + MuDataSeurat from GitHub)
+#
+# Disk: +3-4 GB on top of base.  Solve time on conda: +15-30 min (R + Bioconductor
+# have a deep dependency graph).
+
+name: taiji-agent
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  # ---- R interpreter ----
+  - r-base>=4.3
+
+  # ---- Seurat / Signac stack (pseudobulk-construct) ----
+  - r-seurat>=5.0
+  - bioconductor-signac>=1.12
+
+  # ---- Supporting R packages ----
+  - r-matrix
+  - bioconductor-genomicranges
+  - r-dplyr
+  - r-optparse
+  - r-jsonlite
+
+  # ---- Required by bin/postinstall.R for the GitHub-only packages
+  #      (SeuratDisk, MuDataSeurat) which aren't on bioconda ----
+  - r-remotes

@@ -272,21 +272,48 @@ For Eunice's UCSD setup, the binary additionally lives at `/stg3/data1/eunice/Pr
 
 ## Environment management
 
-Single command to set up everything:
+Composable profiles let users install only what their dataset needs. Bulk-only users save ~3.5 GB and ~20 min by skipping the R + Seurat/Signac stack.
 
 ```bash
-bash bin/install.sh
+bash bin/install.sh --system <macos|centos|ubuntu>            # base only (default)
+bash bin/install.sh --system macos --profile sc               # base + sc
+bash bin/install.sh --system macos --profile full             # base + sc + dev
+
+bash bin/auto-install.sh --data-dir <path> --system macos     # detect-driven
+bash bin/auto-install.sh --data-dir <path> --system macos --dry-run  # plan only
+
 micromamba activate taiji-agent
-bash bin/doctor.sh           # verify every dep across all skills
+bash bin/doctor.sh --profile base                             # filter by profile
 ```
 
-Three reproducibility tiers (full details in `docs/environment.md`):
+### Profiles
 
-1. **Tier 1 — micromamba + environment.yml.** One command, ~10 min on first run. Versions pinned via `>=` constraints; transitive resolution at install time.
+| Profile | What's in it | Enables | Disk | Time |
+|---------|--------------|---------|------|------|
+| `base` (default) | Python + click/pydantic/pyyaml + pandas + openpyxl + macs3 + local pkg | detect-dataset-type, build-taiji-input, fetch-references, taiji-runner, workflow-log | ~500 MB | ~5 min |
+| `sc` (additive) | r-base + r-seurat + bioconductor-signac + Bioconductor + r-remotes + (postinstall) SeuratDisk + MuDataSeurat | pseudobulk-construct | +3-4 GB | +15-30 min |
+| `dev` (orthogonal) | pytest + pytest-cov + ruff + mypy + ipython | author tooling | +500 MB | +3 min |
+| `full` | base + sc + dev | everything | ~5 GB | ~25 min |
+
+`sc` is **additive on top of base**, not standalone — you can layer profiles incrementally. A user who installed `base` and later needs SC can run `bash bin/install.sh --profile sc` and only the R packages get added; no full reinstall.
+
+### Per-skill profile membership
+
+Each skill declares its profile in `skills/<name>/dependencies.yml`:
+
+```yaml
+profile: base    # detect-dataset-type, build-taiji-input, fetch-references,
+                 # taiji-runner, workflow-log
+profile: sc      # pseudobulk-construct (the only SC-using skill)
+```
+
+`bin/doctor.sh --profile <name>` filters the verification table to skills that actually require the requested profile.
+
+### Reproducibility tiers (full details in `docs/environment.md`)
+
+1. **Tier 1 — micromamba + environment.<profile>.yml.** One command, ~5-25 min depending on profile.
 2. **Tier 2 — conda-lock.** Generate `conda-lock.linux-64.yml` once, commit it, then `bash bin/install.sh --use-lockfile` produces byte-identical envs across machines.
 3. **Tier 3 — conda-pack tarball.** After Tier 2 works on one machine, pack to a portable `.tar.gz`. Restore on any compatible Linux node in <2 min, no network. Closest equivalent to a Docker image without needing a container runtime.
-
-Per-skill `dependencies.yml` files declare runtime needs (binaries with version pins + alternatives, Python packages with `import_name` overrides, R packages with bioconda/github source tags, optional data files). `bin/doctor.sh --json` reads them for machine-readable status.
 
 ## Design conventions across all skills
 
