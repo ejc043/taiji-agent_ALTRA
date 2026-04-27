@@ -7,8 +7,8 @@ mm9:
   gtf: /path/to/mm9/genes.gtf
   hic: /path/to/Epitensor/mm9/loops.txt
 hg38:
-  fasta: /Users/eunicechoi/Documents/Claude/Projects/taiji agent/dependencies_data/hg38/genome.fa
-  gtf: /Users/eunicechoi/Documents/Claude/Projects/taiji agent/dependencies_data/hg38/genes.gtf
+  fasta: /stg3/data1/eunice/Projects/taiji_agent/small_test/taiji-agent/dependencies_data/hg38/genome.fa
+  gtf: /stg3/data1/eunice/Projects/taiji_agent/small_test/taiji-agent/dependencies_data/hg38/genes.gtf
   hic: null
 hg19:
   fasta: /path/to/hg19/genome.fa
