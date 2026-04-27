@@ -17,7 +17,7 @@
 # This file now equals base + sc + dev for users / scripts that still call
 # `conda env create -f environment.yml` directly. New users should switch to
 # bin/install.sh which handles profile composition + post-install steps
-# (SeuratDisk + MuDataSeurat + Taiji binary).
+# (MuDataSeurat + Taiji binary).
 
 name: taiji-agent
 channels:

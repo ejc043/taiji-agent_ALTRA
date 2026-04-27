@@ -1,10 +1,16 @@
 #!/usr/bin/env Rscript
 # postinstall.R — install GitHub-only R packages after the conda env is built.
 #
-# Why this isn't in environment.yml: SeuratDisk and MuDataSeurat are not
-# distributed via bioconda or conda-forge. The official install path is
+# Why this isn't in environment.yml: MuDataSeurat is not distributed via
+# bioconda or conda-forge. The official install path is
 # remotes::install_github, which is straightforward but can't be expressed
 # in a conda recipe.
+#
+# Note: SeuratDisk used to be installed here for .h5ad ingestion but was
+# removed — it's unmaintained upstream and frequently fails to build on
+# managed cluster envs. .h5ad inputs to pseudobulk-construct now require
+# either a user-supplied SeuratDisk install or a Python-side conversion
+# to .rds before calling the skill.
 #
 # Idempotency: this script checks whether each package already loads cleanly
 # before reinstalling. Re-runs are a no-op when packages are present.
@@ -34,7 +40,6 @@ suppressPackageStartupMessages({
 
 # Each entry: (R package name, GitHub repo). Add new GitHub-only deps here.
 github_packages <- list(
-  list(pkg = "SeuratDisk",   repo = "mojaveazure/seurat-disk"),
   list(pkg = "MuDataSeurat", repo = "PMBio/MuDataSeurat")
 )
 

@@ -34,10 +34,15 @@ r_packages:
   - {name: dplyr,                               source: "conda"}
   - {name: optparse,                            source: "conda"}
   - {name: jsonlite,                            source: "conda"}
-  - {name: SeuratDisk,     source: "github",   repo: "mojaveazure/seurat-disk",
-     required_for: ".h5ad input"}
   - {name: MuDataSeurat,   source: "github",   repo: "PMBio/MuDataSeurat",
      required_for: ".h5mu input"}
+  # SeuratDisk (formerly auto-installed for .h5ad input) was removed —
+  # unmaintained upstream and brittle to build under managed cluster envs.
+  # If you need .h5ad ingestion, install it manually:
+  #   R> remotes::install_github("mojaveazure/seurat-disk")
+  # Otherwise convert .h5ad -> .rds upstream (e.g. via Python anndata +
+  # anndata2ri, or by re-saving from your scRNA-seq pipeline as a Seurat
+  # .rds) before calling this skill.
 
 data:
   - description: "fragments.tsv.gz with barcoded ATAC fragments"

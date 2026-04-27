@@ -23,7 +23,7 @@ skills/                 Plugin-style skills (the bulk of the project's logic liv
 bin/                    one-command install + verifier
   install.sh                top-level installer (env + R postinstall + Taiji binary)
   install-taiji.sh          per-system Taiji binary downloader
-  postinstall.R             remotes::install_github() for SeuratDisk + MuDataSeurat
+  postinstall.R             remotes::install_github() for MuDataSeurat (.h5mu input)
   doctor.sh                 verifies every dep declared in skills/*/dependencies.yml
 binaries/               where install-taiji.sh drops the Taiji executable (gitignored payload)
 docs/environment.md     full env-management guide (Tier 1/2/3: install, lockfile, conda-pack)
@@ -87,7 +87,7 @@ Six production skills, all chainable end-to-end. The `taiji/` directory is reser
 **Pipeline (orchestrated by `pseudobulk.py`):**
 1. `detect-dataset-type` gate — refuses bulk; for sc-undetermined refuses with Signac integrate_atac pointer; for separate-assay routes to ATAC-LSI clustering with required transferred-label check.
 2. Dependency check (Rscript + MACS2 on PATH; degrades to warning under `--dry-run`).
-3. `load_and_cluster.R` — loads object (extension dispatch: `.rds` direct, `.h5ad` via SeuratDisk, `.h5mu` via MuDataSeurat), runs Seurat/Signac WNN clustering (or RNA-only PCA / ATAC-only LSI), scale-aware resolution binary search (seed `r0 = 0.15·log2(N/1000)·sqrt(target_n_clusters/20)`, clamped to [0.05, 3.0], up to 8 iterations targeting mean cluster size in [100, 300]), drops <20-cell clusters and sub-groups, writes `clusters.csv`, `resolution_trace.json`, `groups_plan.json`, and per-group barcode files.
+3. `load_and_cluster.R` — loads object (extension dispatch: `.rds` direct, `.h5ad` via SeuratDisk *iff* the user installed it manually — no longer auto-installed, see SC notes in dependencies.yml — `.h5mu` via MuDataSeurat), runs Seurat/Signac WNN clustering (or RNA-only PCA / ATAC-only LSI), scale-aware resolution binary search (seed `r0 = 0.15·log2(N/1000)·sqrt(target_n_clusters/20)`, clamped to [0.05, 3.0], up to 8 iterations targeting mean cluster size in [100, 300]), drops <20-cell clusters and sub-groups, writes `clusters.csv`, `resolution_trace.json`, `groups_plan.json`, and per-group barcode files.
 4. `aggregate_rna.R` — sums raw counts per `(cluster × metadata_col × value)` group, writes 2-column GeneQuant TSV (no header) per group.
 5. Per-cluster MACS2 (driven from Python): `gunzip -c fragments.tsv.gz | awk <barcode-filter> | macs2 callpeak -t - -f BED --nomodel --shift -100 --extsize 200 -q 0.05 --call-summits`. Standard scATAC per-cluster recipe.
 6. Emits `manifest.tsv` with the exact columns `build-taiji-input --samples` expects: `name, cohort, group, rna_seq, atac_seq, genome`. Zero-glue handoff.
@@ -260,7 +260,7 @@ Trimmed to reflect that all inputs are pre-aligned/pre-quantified — no BWA, ST
 - Pinned Python deps in `environment.yml`: click, pydantic, pyyaml, jinja2, rich, pandas, openpyxl
 - Rscript ≥ 4.2 (only for `pseudobulk-construct`)
 - R packages (bioconda): Seurat ≥ 5.0, Signac ≥ 1.12, Matrix, GenomicRanges, dplyr, optparse, jsonlite
-- R packages (GitHub-only, installed by `bin/postinstall.R`): SeuratDisk (for .h5ad), MuDataSeurat (for .h5mu)
+- R packages (GitHub-only, installed by `bin/postinstall.R`): MuDataSeurat (for `.h5mu`). SeuratDisk (for `.h5ad`) was removed from the auto-install — it's unmaintained upstream and brittle to build on cluster envs. `.h5ad` ingestion now requires either a manual `remotes::install_github("mojaveazure/seurat-disk")` or upstream conversion to `.rds`.
 - MACS3 ≥ 3.0 (or MACS2 — `pseudobulk-construct` auto-detects whichever is on PATH)
 - gunzip + awk (standard Unix)
 
@@ -293,7 +293,7 @@ bash bin/doctor.sh --profile base                             # filter by profil
 | Profile | What's in it | Enables | Disk | Time |
 |---------|--------------|---------|------|------|
 | `base` (default) | Python + click/pydantic/pyyaml + pandas + openpyxl + macs3 + local pkg | detect-dataset-type, build-taiji-input, fetch-references, taiji-runner, workflow-log | ~500 MB | ~5 min |
-| `sc` (additive) | r-base + r-seurat + bioconductor-signac + Bioconductor + r-remotes + (postinstall) SeuratDisk + MuDataSeurat | pseudobulk-construct | +3-4 GB | +15-30 min |
+| `sc` (additive) | r-base + r-seurat + bioconductor-signac + Bioconductor + r-remotes + (postinstall) MuDataSeurat | pseudobulk-construct | +3-4 GB | +15-30 min |
 | `dev` (orthogonal) | pytest + pytest-cov + ruff + mypy + ipython | author tooling | +500 MB | +3 min |
 | `full` | base + sc + dev | everything | ~5 GB | ~25 min |
 

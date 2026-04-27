@@ -2,10 +2,10 @@
 # install.sh — one-command installer for the taiji-agent.
 #
 # Builds a conda env using composable PROFILES so users only install what
-# their dataset actually needs. Then runs the R postinstall (SeuratDisk +
-# MuDataSeurat from GitHub, only if the SC profile is present) and installs
-# the Taiji binary. Idempotent: re-running on an existing install layers
-# additional profiles on top without rebuilding from scratch.
+# their dataset actually needs. Then runs the R postinstall (MuDataSeurat
+# from GitHub, only if the SC profile is present) and installs the Taiji
+# binary. Idempotent: re-running on an existing install layers additional
+# profiles on top without rebuilding from scratch.
 #
 # Profiles:
 #   base   Python + xlsx + MACS3 + local taiji-agent package
@@ -383,7 +383,7 @@ fi
 
 # ---- R postinstall (only when sc profile is in scope) ----
 if [[ "$RUN_POSTINSTALL_R" -eq 1 ]]; then
-  echo "[install] running R postinstall (SeuratDisk + MuDataSeurat) ..."
+  echo "[install] running R postinstall (MuDataSeurat) ..."
   if ! "${RUN[@]}" Rscript "${REPO_ROOT}/bin/postinstall.R"; then
     echo "[install] postinstall.R failed; investigate before proceeding." >&2
     exit 4

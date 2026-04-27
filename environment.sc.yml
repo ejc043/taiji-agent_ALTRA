@@ -6,7 +6,7 @@
 # Install order:
 #   1. environment.base.yml      (required first)
 #   2. environment.sc.yml        (this file; layers R packages)
-#   3. bin/postinstall.R         (installs SeuratDisk + MuDataSeurat from GitHub)
+#   3. bin/postinstall.R         (installs MuDataSeurat from GitHub)
 #
 # Disk: +3-4 GB on top of base.  Solve time on conda: +15-30 min (R + Bioconductor
 # have a deep dependency graph).
@@ -31,6 +31,6 @@ dependencies:
   - r-optparse
   - r-jsonlite
 
-  # ---- Required by bin/postinstall.R for the GitHub-only packages
-  #      (SeuratDisk, MuDataSeurat) which aren't on bioconda ----
+  # ---- Required by bin/postinstall.R for the GitHub-only package
+  #      (MuDataSeurat), which isn't on bioconda ----
   - r-remotes

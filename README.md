@@ -29,7 +29,7 @@ cd taiji-agent
 `bin/auto-install.sh` runs `detect-dataset-type` on your data directory, picks the right profile (`base` for bulk-only, `sc` for single-cell), and installs everything end-to-end:
 
 - conda env named **`taiji-agent`** with the right packages for your dataset
-- GitHub-only R packages (SeuratDisk, MuDataSeurat) if the SC profile is needed
+- GitHub-only R package (MuDataSeurat, for `.h5mu` input) if the SC profile is needed
 - The Taiji binary auto-selected by `--system` (`centos`, `ubuntu`, `macos`)
 
 ```bash
@@ -46,13 +46,25 @@ What this does, in order:
    - **single-cell** → `sc` (~5 GB, ~25 min) — adds R + Seurat/Signac on top of base
    - **mixed** → `sc` (covers both branches)
 3. Creates the `taiji-agent` conda env from the matching `environment.<profile>.yml`. **Skips this step if the env already has that profile installed** (idempotent — re-running on a fresh clone vs an existing env is fast).
-4. Runs `bin/postinstall.R` if SC profile is in scope (installs SeuratDisk + MuDataSeurat from GitHub).
+4. Runs `bin/postinstall.R` if SC profile is in scope (installs MuDataSeurat from GitHub for `.h5mu` input). `.h5ad` input is no longer auto-supported — see the SC notes in `skills/pseudobulk-construct/dependencies.yml` if you need it.
 5. Detects pre-existing Taiji binaries in `binaries/` by name; if a matching one is present, just creates a symlink. Otherwise downloads the Linux binary from the Taiji GitHub release for `--system centos|ubuntu`. macOS prints manual-download instructions because the asset filename varies by macOS version.
 
 ### 3. Stage reference data (one-time per machine per genome)
 
+Activate the env. On managed clusters where `micromamba` doesn't auto-discover envs by name, look up the install prefix first and activate by full path:
+
 ```bash
-micromamba activate taiji-agent
+# Find the env's prefix:
+micromamba env list
+# Output looks like:
+#   Name           Active     Path
+#   taiji-agent               /stg3/data1/eunice/.local/share/mamba/envs/taiji-agent
+#                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+# Activate by full path (works regardless of name-resolution config):
+micromamba activate /stg3/data1/eunice/.local/share/mamba/envs/taiji-agent
+# (On a Mac with default config, `micromamba activate taiji-agent` also works.)
+
 python skills/fetch-references/scripts/fetch.py \
   --genome hg38 --output dependencies_data/ --update-genomes-yml
 ```
@@ -128,10 +140,10 @@ Outputs land at `runs/<your_run_name>/Output/Partial/<sample>/GeneRanks.tsv` (TF
 
 ### Option B — agentic flow via Claude Code
 
-From your `taiji-agent/` directory after activating the env:
+From your `taiji-agent/` directory after activating the env (use the by-path form on clusters — see step 3 above for how to find the prefix):
 
 ```bash
-micromamba activate taiji-agent
+micromamba activate /path/to/mamba/envs/taiji-agent   # full prefix; or `taiji-agent` if name-resolution works
 claude
 ```
 
@@ -166,7 +178,7 @@ taiji-agent/
 │   ├── auto-install.sh             agent-driven: data → profile → install
 │   ├── install.sh                  profile-aware: --profile {base|sc|dev|full}
 │   ├── install-taiji.sh            per-system Taiji binary downloader / detector
-│   ├── postinstall.R               GitHub-only R packages (SeuratDisk, MuDataSeurat)
+│   ├── postinstall.R               GitHub-only R packages (MuDataSeurat)
 │   ├── run-taiji.sh                per-run executor (delegates per-sample to taiji-runner)
 │   ├── sandbox-run.sh              workspace-bounded execution wrapper
 │   ├── preflight-xlsx.py           verifies all paths in xlsx exist before launch
