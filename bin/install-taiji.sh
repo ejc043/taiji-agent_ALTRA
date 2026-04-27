@@ -9,8 +9,19 @@
 #   bash bin/install-taiji.sh --version v1.3.0   # pin a specific release
 #   bash bin/install-taiji.sh --force            # re-download even if present
 #
-# The binary lands at <repo-root>/binaries/taiji and is symlinked to
-# <repo-root>/binaries/taiji-<system>-<version> for traceability.
+# Naming convention on disk: file is always saved as the bare GitHub asset
+# name. No version suffix, no -latest. --version controls only which release
+# tag the URL points at; the file overwrites in place on re-fetch.
+#
+#   --system centos  ->  binaries/taiji-CentOS-x86_64
+#   --system ubuntu  ->  binaries/taiji-Ubuntu-x86_64
+#   --system macos   ->  binaries/taiji-macOS-XX-XX  (manual download; varies by macOS version)
+#
+# Plus a convenience symlink at binaries/taiji -> the active binary, so
+# bin/run-taiji.sh and other callers can find it via a stable path.
+#
+# By-name auto-detection: if a matching binary already exists in binaries/,
+# the script symlinks it and skips the download (idempotent re-runs).
 #
 # Exit codes: 0 ok, 2 unknown --system, 3 download failed, 4 chmod failed.
 
@@ -62,9 +73,12 @@ if [[ -z "$SYSTEM" ]]; then
 fi
 
 # Map --system to the release asset name (or asset glob for macOS).
+# ASSET_GLOB ends with `*` so the by-name detection picks up files named
+# either `taiji-CentOS-x86_64` (no suffix), `taiji-CentOS-x86_64-v1.3.0`
+# (explicit version), or `taiji-CentOS-x86_64-latest` (legacy).
 case "$SYSTEM" in
-  centos) ASSET="taiji-CentOS-x86_64";  ASSET_GLOB="taiji-CentOS-x86_64" ;;
-  ubuntu) ASSET="taiji-Ubuntu-x86_64";  ASSET_GLOB="taiji-Ubuntu-x86_64" ;;
+  centos) ASSET="taiji-CentOS-x86_64";  ASSET_GLOB="taiji-CentOS-x86_64*" ;;
+  ubuntu) ASSET="taiji-Ubuntu-x86_64";  ASSET_GLOB="taiji-Ubuntu-x86_64*" ;;
   macos)
     # macOS asset filenames vary by macOS major version (taiji-macOS-Catalina-10.15,
     # taiji-macOS-BigSur-11, etc.). We can't pick the right one to download
@@ -130,34 +144,53 @@ if [[ "$SYSTEM" == "macos" && -z "$ASSET" ]]; then
 fi
 
 # ---- Linux download path -------------------------------------------------
+# URL: GitHub serves /releases/latest/download/<asset> as a 302 to the
+# real /releases/download/<tag>/<asset>; curl -L follows the redirect.
+# `--version` controls which release tag the URL points at, but the file
+# on disk is always saved as the bare asset name (e.g. taiji-CentOS-x86_64)
+# — no version suffix, no -latest. Re-fetching overwrites the same file.
 if [[ "$VERSION" == "latest" ]]; then
   URL="https://github.com/Taiji-pipeline/Taiji/releases/latest/download/${ASSET}"
 else
   URL="https://github.com/Taiji-pipeline/Taiji/releases/download/${VERSION}/${ASSET}"
 fi
+TARGET="${BINDIR}/${ASSET}"
 
-TRACEABLE="${BINDIR}/${ASSET}-${VERSION}"
-
-if [[ -e "$DEST" && "$FORCE" -eq 0 ]]; then
-  echo "[install-taiji] $DEST already exists (pass --force to re-download)"
-  echo "[install-taiji] current version: $("$DEST" --version 2>/dev/null || echo unknown)"
+if [[ -e "$TARGET" && "$FORCE" -eq 0 ]]; then
+  echo "[install-taiji] $TARGET already exists (pass --force to re-download)"
+  ln -sfn "$ASSET" "$DEST" 2>/dev/null || true
+  echo "[install-taiji] current binary: $("$TARGET" --version 2>/dev/null || echo unknown)"
   exit 0
 fi
 
-echo "[install-taiji] downloading $URL -> $TRACEABLE"
-if ! curl -fL --retry 3 --retry-delay 2 -o "$TRACEABLE" "$URL"; then
-  echo "[install-taiji] download failed" >&2
+echo "[install-taiji] downloading $URL"
+echo "[install-taiji]   -> $TARGET"
+# `-fL`: fail on HTTP errors and follow redirects (releases/latest/download
+#        always 302s to the actual release tag).
+# `--retry`: handle transient 5xx/network blips.
+# `-#`: progress bar to stderr.
+if ! curl -fL --retry 3 --retry-delay 2 -# -o "$TARGET" "$URL"; then
+  echo "" >&2
+  echo "[install-taiji] download failed." >&2
+  echo "[install-taiji]   url:    $URL" >&2
+  echo "[install-taiji]   target: $TARGET" >&2
+  echo "[install-taiji] common causes:" >&2
+  echo "[install-taiji]   - sandbox / proxy blocking github.com (try from your Mac directly)" >&2
+  echo "[install-taiji]   - asset filename changed in a Taiji release; verify at:" >&2
+  echo "[install-taiji]       https://github.com/Taiji-pipeline/Taiji/releases/${VERSION}" >&2
+  echo "[install-taiji]   - --version pin doesn't exist (pass a real tag like v1.3.0)" >&2
   exit 3
 fi
 
-chmod +x "$TRACEABLE" || { echo "[install-taiji] chmod +x failed" >&2; exit 4; }
+chmod +x "$TARGET" || { echo "[install-taiji] chmod +x failed" >&2; exit 4; }
 
-# Replace any existing taiji symlink/file with one pointing at the new binary.
-rm -f "$DEST"
-ln -s "$(basename "$TRACEABLE")" "$DEST"
+# Atomically (re)create the convenience symlink.
+ln -sfn "$(basename "$TARGET")" "$DEST" 2>/dev/null \
+  || echo "[install-taiji] WARN: could not create symlink at $DEST (binary still usable at $TARGET)" >&2
 
-echo "[install-taiji] installed: $DEST -> $(readlink "$DEST")"
-echo "[install-taiji] smoke test: $DEST --help"
-"$DEST" --help >/dev/null 2>&1 \
+echo "[install-taiji] installed: $TARGET"
+[[ -L "$DEST" ]] && echo "[install-taiji] symlink:   $DEST -> $(readlink "$DEST")"
+echo "[install-taiji] smoke test: $TARGET --help"
+"$TARGET" --help >/dev/null 2>&1 \
   && echo "[install-taiji] OK" \
-  || { echo "[install-taiji] WARNING: --help did not exit cleanly. Inspect manually."; }
+  || echo "[install-taiji] WARNING: --help did not exit cleanly. The binary may still work; inspect manually."
