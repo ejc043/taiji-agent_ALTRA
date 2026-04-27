@@ -72,6 +72,36 @@ bash bin/doctor.sh --profile base       # or --profile sc / full
 
 Should report PASS for every skill in the requested profile.
 
+## Required input formats
+
+### Bulk data
+
+Place one file per sample per assay under a single flat directory. File-naming convention is up to you — you supply the pattern to `build-taiji-input` via `--rna-pattern`, `--atac-pattern`, and `--hic-pattern`.
+
+| Assay | Extension | Format | Schema |
+|-------|-----------|--------|--------|
+| RNA-seq | `.tsv` | GeneQuant | 2-column, **no header**: `gene_symbol<TAB>expression_value` |
+| ATAC-seq | `.narrowPeak` | ENCODE BED6+4 | 10-column standard MACS2/MACS3 output |
+| HiC *(optional)* | `.bedpe` | ChromosomeLoop | 6-column: `chr1 start1 end1 chr2 start2 end2` |
+
+RNA and ATAC are both required per sample; HiC is optional but improves TF→target edge accuracy.
+
+`detect-dataset-type` will emit `MISSING REQUIRED` warnings for any absent modality when it classifies a directory as bulk. `build-taiji-input` will error (strict mode, default) or warn-and-skip (--no-strict) if a pattern resolves to a path that doesn't exist.
+
+### Single-cell data
+
+| Extension | Source | Loader | Modality |
+|-----------|--------|--------|----------|
+| `.rds` | Seurat (v5) or SingleCellExperiment | direct R `readRDS` | RNA-only / ATAC-only / multiome / separate-assay |
+| `.h5ad` | AnnData (Python) | via `SeuratDisk::Convert` | typically RNA-only or separate-assay |
+| `.h5mu` | MuData (Python) | via `MuDataSeurat` | always treated as multiome |
+
+**Required companion for any ATAC processing:**
+
+`fragments.tsv.gz` — bgzipped, Tabix-indexed scATAC fragments file (10x cellranger-arc output or Signac-compatible). MACS2/MACS3 reads barcode-filtered fragments per cluster. Without it, only RNA pseudobulks can be generated; pass `--rna-only` to `pseudobulk-construct` to suppress the error.
+
+`detect-dataset-type` will emit a `MISSING RECOMMENDED` warning when it sees SC object files but no fragments file in the same tree.
+
 ## Running Taiji on a dataset
 
 ### Option A — direct script invocation

@@ -123,6 +123,55 @@ def _matches_sc_filename(name: str) -> str | None:
     return None
 
 
+def _check_bulk_completeness(result: "DetectResult") -> None:
+    """Warn for each missing required bulk modality (RNA, ATAC) and note absent HiC."""
+    has_rna = ".tsv" in result.bulk_files
+    has_atac = ".narrowpeak" in result.bulk_files
+    has_hic = ".bedpe" in result.bulk_files
+
+    if not has_rna:
+        result.warnings.append(
+            "MISSING REQUIRED: no RNA-seq GeneQuant files (.tsv) found. "
+            "Taiji requires one 2-column TSV per sample (no header): "
+            "gene_symbol<TAB>expression_value. "
+            "These are typically produced by RSEM, STARsolo, or featureCounts."
+        )
+    if not has_atac:
+        result.warnings.append(
+            "MISSING REQUIRED: no ATAC-seq peak files (.narrowPeak) found. "
+            "Taiji requires ENCODE BED6+4 narrowPeak format — standard MACS2/MACS3 output "
+            "from pre-aligned BAMs. Columns: chr, start, end, name, score, strand, "
+            "signalValue, pValue, qValue, summit."
+        )
+    if not has_hic:
+        result.warnings.append(
+            "no HiC chromatin-loop files (.bedpe) found. HiC is optional but improves "
+            "TF→target edge accuracy. Format: 6-column BEDPE "
+            "(chr1 start1 end1 chr2 start2 end2, tab-separated, no header)."
+        )
+
+
+def _check_sc_completeness(result: "DetectResult", all_basenames: list[str]) -> None:
+    """Warn if no SC object file or no fragments file found for an SC dataset."""
+    sc_object_exts = {".rds", ".h5ad", ".h5mu"}
+    has_object = any(ext in result.sc_files for ext in sc_object_exts)
+    if not has_object:
+        result.warnings.append(
+            "MISSING REQUIRED: no single-cell object file (.rds / .h5ad / .h5mu) found. "
+            "pseudobulk-construct requires a Seurat (.rds), AnnData (.h5ad), "
+            "or MuData (.h5mu) object to load cells and run clustering."
+        )
+
+    has_fragments = "fragments.tsv" in result.sc_files
+    if not has_fragments:
+        result.warnings.append(
+            "MISSING RECOMMENDED: no ATAC fragments file (fragments.tsv.gz) found. "
+            "pseudobulk-construct needs a bgzipped, Tabix-indexed 10x-compatible "
+            "fragments file for per-cluster ATAC peak calling. Without it, "
+            "only RNA pseudobulks can be generated (use --rna-only)."
+        )
+
+
 def _classify_sc_modality(
     sc_files: dict[str, list[str]],
     all_basenames: list[str],
@@ -256,6 +305,7 @@ def detect_dataset_type(
     elif has_sc:
         result.classification = "single-cell"
         result.sc_modality = _classify_sc_modality(result.sc_files, all_basenames)
+        _check_sc_completeness(result, all_basenames)
 
         if result.sc_modality == "multiome":
             result.warnings.append(
@@ -287,6 +337,7 @@ def detect_dataset_type(
             )
     elif has_bulk:
         result.classification = "bulk"
+        _check_bulk_completeness(result)
         # .tsv alone is a weak signal — could be any tab-separated file.
         if set(result.bulk_files.keys()) == {".tsv"}:
             result.warnings.append(
