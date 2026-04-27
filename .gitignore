@@ -7,6 +7,8 @@ runs/*/log/
 runs/*/taiji_config.yml
 runs/*/taiji_input.xlsx
 runs/*/taiji_config_files.txt
+log/
+tmp/
 __pycache__/
 *.pyc
 .DS_Store

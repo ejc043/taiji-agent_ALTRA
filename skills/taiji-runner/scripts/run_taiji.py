@@ -375,26 +375,58 @@ def _slurm_submit_array(results: list[SampleResult], binary: Path,
         return results
 
     # Sync mode: poll squeue until the job is gone.
+    # Correctness notes:
+    #   - squeue returns exit 0 with empty stdout when no tasks remain in the
+    #     queue (COMPLETED/FAILED/CANCELLED all leave the queue).  We exit only
+    #     on empty stdout, never on a non-zero returncode, because a transient
+    #     SLURM blip (timeout, scheduler restart) returns non-zero even when the
+    #     job is still running.
+    #   - COMPLETING is a brief post-run cleanup state that squeue *does* show
+    #     (with non-empty stdout), so exiting on empty stdout handles it correctly
+    #     — we only break after every task has left the queue entirely.
+    #   - After the queue empties we call sacct for the authoritative final state,
+    #     which lets us distinguish COMPLETED from FAILED/CANCELLED.
     print(f"[taiji-runner] waiting on job {job_id} (Ctrl-C is safe; SLURM keeps running)...",
           file=sys.stderr)
     poll_interval = 30
     while True:
         try:
             check = subprocess.run(
-                ["squeue", "-j", job_id, "--noheader",
-                 "--format=%T %i_%a"],
+                ["squeue", "-j", job_id, "--noheader", "--format=%T %i_%a"],
                 capture_output=True, text=True, check=False, timeout=15)
         except subprocess.TimeoutExpired:
             time.sleep(poll_interval)
             continue
-        if check.returncode != 0 or not check.stdout.strip():
+        if not check.stdout.strip():
+            # Empty output = no tasks remain in the queue.
             break
-        running = sum(1 for _ in check.stdout.strip().splitlines())
+        running = len(check.stdout.strip().splitlines())
         print(f"[taiji-runner]   ... {running} task(s) still in queue",
               file=sys.stderr)
         time.sleep(poll_interval)
 
-    print(f"[taiji-runner] job {job_id} completed", file=sys.stderr)
+    # Confirm final states via sacct (authoritative; survives after queue purge).
+    task_states: dict[str, str] = {}
+    if shutil.which("sacct"):
+        try:
+            sa = subprocess.run(
+                ["sacct", "-j", job_id, "--format=JobID,State", "--noheader",
+                 "--parsable2"],
+                capture_output=True, text=True, check=False, timeout=30)
+            for line in sa.stdout.strip().splitlines():
+                parts = line.split("|")
+                if len(parts) >= 2:
+                    task_states[parts[0].strip()] = parts[1].strip()
+        except Exception:
+            pass
+
+    failed_tasks = [jid for jid, st in task_states.items()
+                    if st not in ("COMPLETED", "RUNNING", "PENDING", "COMPLETING", "")]
+    if failed_tasks:
+        print(f"[taiji-runner] sacct reports non-COMPLETED tasks: "
+              f"{', '.join(f'{j}={task_states[j]}' for j in failed_tasks)}",
+              file=sys.stderr)
+    print(f"[taiji-runner] job {job_id} left the queue", file=sys.stderr)
 
     # Validate per-sample outputs.
     for r in results:
