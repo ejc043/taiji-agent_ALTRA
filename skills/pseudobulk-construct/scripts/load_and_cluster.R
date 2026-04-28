@@ -40,6 +40,8 @@ option_list <- list(
               help = "Comma-separated columns to stratify on. Multiple columns produce the FULL CROSS-PRODUCT within each cluster (e.g. genotype,tissue -> per-cluster (WT,spleen) (WT,siiel) (KO,spleen) (KO,siiel))."),
   make_option("--cohort-col", type = "character", default = NULL,
               help = "Which metadata column's value becomes the manifest 'cohort' label. Default: first --metadata-cols entry."),
+  make_option("--use-existing-clusters", action = "store_true", default = FALSE,
+              help = "Skip clustering. Read seurat_clusters from the input object's @meta.data and use the existing UMAP reduction (or compute one from the existing PCA). Use this when the input is a coembed-construct output that's already been clustered on a shared embedding — re-clustering on a single modality's LSI/PCA would discard the joint structure."),
   make_option("--no-plot", action = "store_true", default = FALSE,
               help = "Skip the QC UMAP rendering step (default: write qc/umap.png)."),
   make_option("--yes", action = "store_true", default = FALSE)
@@ -215,7 +217,26 @@ binary_search_resolution <- function(obj,
 n_cells <- ncol(obj)
 message("[load_and_cluster] signal=", opt$signal, " on ", n_cells, " cells")
 
-if (opt$signal == "wnn") {
+# ------------------------------------------------------------------------
+# Branch A: Use clusters that already live in the object (coembed-construct
+# output, or any user-pre-clustered .rds).
+# ------------------------------------------------------------------------
+if (opt$`use-existing-clusters`) {
+  if (!"seurat_clusters" %in% colnames(obj@meta.data)) {
+    stop("--use-existing-clusters set but obj@meta.data has no ",
+         "'seurat_clusters' column. Either cluster the object upstream, ",
+         "or omit --use-existing-clusters to let this skill cluster.")
+  }
+  message("[load_and_cluster] using existing seurat_clusters from input ",
+          "(--use-existing-clusters)")
+  Idents(obj) <- "seurat_clusters"
+  res_result <- list(
+    obj = obj,
+    resolution = NA_real_,
+    trace = list(list(note = "skipped — used existing seurat_clusters"))
+  )
+  graph_name <- NA_character_
+} else if (opt$signal == "wnn") {
   if (!has_atac_assay(obj)) {
     stop("WNN requested but no ATAC assay found in the object. ",
          "Rerun with --clustering-signal rna, or supply a multiome object.")
@@ -255,28 +276,34 @@ if (opt$signal == "wnn") {
 # Separate-assay safety check
 # ------------------------------------------------------------------------
 # If clustering on ATAC and no transferred-label column is present, the user
-# probably skipped the Signac integrate_atac step. Refuse unless --signal
-# was set explicitly to atac (in which case the user knows what they're doing).
-
-if (opt$signal == "atac") {
+# probably skipped both the coembed-construct and Signac integrate_atac
+# paths. Refuse with a pointer at coembed-construct (the simpler entry
+# point) and the integrate_atac vignette. Skipped when the user has passed
+# --use-existing-clusters (object is pre-coembedded).
+if (!opt$`use-existing-clusters` && opt$signal == "atac") {
   if (!(opt$`transferred-label-col` %in% colnames(obj@meta.data))) {
     stop(sprintf(
       "--signal atac selected but column '%s' is missing from meta.data. ",
       opt$`transferred-label-col`),
       "If this is separate-assay scATAC that hasn't been integrated with ",
-      "scRNA yet, co-embed first via Signac's integrate_atac: ",
-      "https://stuartlab.org/signac/articles/integrate_atac . ",
-      "Override with --transferred-label-col <existing col>.")
+      "scRNA yet, run coembed-construct first to produce a coembed .rds, ",
+      "then call this skill with --use-existing-clusters. Or, if you've ",
+      "already done your own integrate_atac upstream, override with ",
+      "--transferred-label-col <existing col>. ",
+      "Vignette: https://stuartlab.org/signac/articles/integrate_atac")
   }
 }
 
 # ------------------------------------------------------------------------
 # Resolution search + cluster assignment
 # ------------------------------------------------------------------------
-
-res_result <- binary_search_resolution(
-  obj, graph_name, n_cells, opt$`target-cluster-size`)
-obj <- res_result$obj
+# Skipped when --use-existing-clusters: res_result was set above with the
+# pre-clustered object and a sentinel trace.
+if (!opt$`use-existing-clusters`) {
+  res_result <- binary_search_resolution(
+    obj, graph_name, n_cells, opt$`target-cluster-size`)
+  obj <- res_result$obj
+}
 
 # Write the trace for audit.
 writeLines(
@@ -352,8 +379,15 @@ if (!is.null(opt$`metadata-cols`)) {
 md_out <- obj@meta.data
 md_out$barcode <- rownames(md_out)
 md_out$seurat_cluster <- cluster_vec
+# Always preserve `assay` if the object carries it — coembed outputs use
+# this as the RNA/ATAC origin tag, and downstream aggregate_rna.R +
+# call_peaks.R filter on it. Don't require the user to pass it in
+# --metadata-cols just to keep the filter working.
+preserve_cols <- unique(c("barcode", "seurat_cluster",
+                          if ("assay" %in% colnames(md_out)) "assay",
+                          meta_cols))
 md_out <- md_out[md_out$seurat_cluster %in% keep_clusters,
-                 c("barcode", "seurat_cluster", meta_cols), drop = FALSE]
+                 preserve_cols, drop = FALSE]
 write.csv(md_out, file.path(output_dir, "clusters.csv"), row.names = FALSE)
 
 for (cl in keep_clusters) {
@@ -527,9 +561,19 @@ if (!opt$`no-plot`) {
     qc_dir <- file.path(output_dir, "qc")
     dir.create(qc_dir, recursive = TRUE, showWarnings = FALSE)
 
-    # Compute UMAP using the same reduction we clustered on.
+    # Compute UMAP using the same reduction we clustered on. When
+    # --use-existing-clusters is set, prefer the object's existing UMAP
+    # reduction so the QC plot matches what the user already has.
     obj_for_plot <- tryCatch({
-      if (opt$signal == "wnn") {
+      if (opt$`use-existing-clusters`) {
+        existing_umap <- intersect(c("umap", "umap.wnn", "umap.atac", "umap.rna"),
+                                   names(obj@reductions))[1]
+        if (!is.na(existing_umap)) {
+          obj   # already has a UMAP; no recompute
+        } else if ("pca" %in% names(obj@reductions)) {
+          RunUMAP(obj, reduction = "pca", dims = 1:30, verbose = FALSE)
+        } else NULL
+      } else if (opt$signal == "wnn") {
         RunUMAP(obj, nn.name = "weighted.nn",
                 reduction.name = "umap.wnn", verbose = FALSE)
       } else if (opt$signal == "rna") {
@@ -547,10 +591,15 @@ if (!opt$`no-plot`) {
     })
 
     if (!is.null(obj_for_plot)) {
-      reduction_name <- switch(opt$signal,
-                               wnn  = "umap.wnn",
-                               atac = "umap.atac",
-                               "umap")
+      reduction_name <- if (opt$`use-existing-clusters`) {
+        intersect(c("umap", "umap.wnn", "umap.atac", "umap.rna"),
+                  names(obj_for_plot@reductions))[1]
+      } else {
+        switch(opt$signal,
+               wnn  = "umap.wnn",
+               atac = "umap.atac",
+               "umap")
+      }
 
       # Save the UMAP coords as CSV so downstream tools can re-render
       # without R (matplotlib, plotly, etc.). Cheap, ~few MB max.

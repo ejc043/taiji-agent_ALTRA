@@ -318,21 +318,23 @@ def detect_dataset_type(
             result.warnings.append(
                 "single-cell RNA-seq and scATAC-seq detected from DIFFERENT cell "
                 "populations. These assays must be co-embedded before downstream "
-                "regulatory-network analysis. Use the Signac/Seurat integration "
-                "workflow to transfer RNA labels/expression onto the ATAC cells "
-                "via reciprocal-LSI anchors: "
-                "https://stuartlab.org/signac/articles/integrate_atac . "
-                "After co-embedding, export a paired object and feed it to the "
-                "single-cell Taiji workflow (build-taiji-input is bulk-only)."
+                "regulatory-network analysis. Run `coembed-construct` "
+                "(skills/coembed-construct/scripts/coembed.py) with --rna and "
+                "--atac pointing at the two .rds files; it implements the "
+                "Stuart/Signac integrate_atac workflow end-to-end and emits a "
+                "single coembed.rds with shared PCA/UMAP and de novo clusters. "
+                "Then call pseudobulk-construct with --use-existing-clusters. "
+                "Vignette reference: "
+                "https://stuartlab.org/signac/articles/integrate_atac"
             )
         else:  # sc-undetermined
             result.warnings.append(
                 "single-cell data detected but the RNA/ATAC modality layout "
                 "could not be inferred from filenames. If this is multiome "
                 "(same cells), rename files with a 'multiome' token or provide "
-                "a .h5mu. If RNA and ATAC come from DIFFERENT cells, co-embed "
-                "via Signac's integrate_atac workflow before downstream "
-                "analysis: https://stuartlab.org/signac/articles/integrate_atac . "
+                "a .h5mu. If RNA and ATAC come from DIFFERENT cells, run "
+                "coembed-construct first to merge them into a shared latent "
+                "space, then pseudobulk-construct with --use-existing-clusters. "
                 "build-taiji-input is bulk-only and will not run on this dataset."
             )
     elif has_bulk:

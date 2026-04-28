@@ -152,41 +152,61 @@ per-sample binary execution. Validate outputs at the end. Log everything to
 the workflow log so I can audit later.
 ```
 
-**Single-cell (multiome or separate-assay co-embedded):**
+**Single-cell, multiome (.h5mu / cellranger-arc — same cells in both modalities):**
 
 ```
-Run Taiji on the single-cell dataset at `data/<your_dataset>/<object>.rds`,
-fragments at `data/<your_dataset>/fragments.tsv.gz`, hg38. The object is
-<multiome / separate-assay co-embedded via Signac integrate_atac> with cell
-types already assigned in <metadata column, e.g. predicted.id>. Stratify
-pseudobulks by <metadata cols, e.g. predicted.id, condition>.
+Run Taiji on the multiome dataset at `data/<your_dataset>/<object>.h5mu`,
+fragments at `data/<your_dataset>/atac_fragments.tsv.gz`, hg38. Stratify
+pseudobulks by <metadata cols, e.g. condition,donor>.
 
 Walk through:
-  1. detect-dataset-type to confirm modality
-  2. pseudobulk-construct: cluster, render the QC UMAP (panels colored by
-     seurat_clusters, assay if co-embedded, and each metadata col), pause
-     for me to inspect qc/umap.png before proceeding
+  1. detect-dataset-type → confirm multiome
+  2. pseudobulk-construct: WNN clustering, render qc/umap.png (panels
+     colored by seurat_clusters and each metadata col), pause for me
+     to inspect before proceeding
   3. RNA aggregation + Signac::CallPeaks per pseudobulk group
-  4. build-taiji-input from the emitted manifest.tsv
-  5. taiji-runner per sample
-  6. Validate GeneRanks.tsv per sample and summarize top TFs
+  4. build-taiji-input → taiji-runner → validate GeneRanks.tsv
 
 Log everything to the workflow log.
 ```
 
-Single-cell preconditions (the skill enforces these — saves you a wasted run):
-- Cell types must already be assigned to cells in the object's `@meta.data` (no auto-prediction). For separate-assay data this means you've already run Signac's `integrate_atac` upstream.
-- Fragments file must be bgzipped + tabix-indexed (`.tbi` sibling present).
-- Barcodes in the object's ATAC assay must match the fragments file (the skill auto-strips common suffixes like `-1` / `_1` / `ATAC_…`; fails loudly at <95% overlap).
+**Single-cell, separate-assay (one .rds RNA + one .rds ATAC, different cells):**
 
-Claude reads `CLAUDE.md` (auto-loaded from cwd), sees the six skills + the verified RA_11 baseline, and chains:
+```
+Run Taiji on the separate-assay dataset:
+  RNA  : data/<your_dataset>/rna.rds
+  ATAC : data/<your_dataset>/atac.rds
+  fragments: data/<your_dataset>/fragments.tsv.gz
+  hg38
+
+Walk through:
+  1. detect-dataset-type → confirm separate-assay
+  2. coembed-construct: anchor-based integration (RNA reference + ATAC
+     query, gene-activity-anchored TransferData → impute RNA → merge →
+     joint PCA/UMAP → cluster on the shared space). Render qc/umap.png
+     (clusters / assay / metadata cols), pause for me to inspect.
+  3. pseudobulk-construct --use-existing-clusters: stratify by
+     <metadata cols>, aggregate RNA from RNA-origin cells only, call
+     ATAC peaks per group via Signac::CallPeaks
+  4. build-taiji-input → taiji-runner → validate GeneRanks.tsv
+
+Log everything to the workflow log.
+```
+
+Single-cell preconditions:
+- **De novo clusters are fine; reference-derived cell-type labels are not auto-applied.** If you want named cell types ("CD4 T cell", etc.), assign them upstream via `TransferData(refdata = <atlas>$cell_types)` and pass the column through `--metadata-cols`. The skill won't pick a reference atlas for you.
+- **Fragments file must be bgzipped + tabix-indexed** (`.tbi` sibling present).
+- **Barcodes in the object's ATAC assay must match the fragments file** — the skill auto-strips common suffixes (`-1`, `_1`, `ATAC_…`) and requires ≥95% overlap; fails loudly otherwise.
+
+Claude reads `CLAUDE.md` (auto-loaded from cwd), sees the seven skills + the verified RA_11 baseline, and chains:
 
 1. `detect-dataset-type` → classify
 2. `fetch-references` (if not already staged) → reference data
-3. `pseudobulk-construct` (only if SC) → per-cluster pseudobulks + `qc/umap.png`
-4. `build-taiji-input` → xlsx
-5. `taiji-runner` → per-sample TSV/config + per-sample Taiji invocation
-6. Output validation: confirms every sample produced `GeneRanks.tsv`, summarizes top TFs
+3. `coembed-construct` (only for separate-assay SC) → coembed.rds with shared PCA/UMAP and de novo clusters
+4. `pseudobulk-construct` (only if SC) → per-cluster pseudobulks + `qc/umap.png`
+5. `build-taiji-input` → xlsx
+6. `taiji-runner` → per-sample TSV/config + per-sample Taiji invocation
+7. Output validation: confirms every sample produced `GeneRanks.tsv`, summarizes top TFs
 
 Every stage is logged to `runs/<name>/log/<run_id>.{md,jsonl}`.
 

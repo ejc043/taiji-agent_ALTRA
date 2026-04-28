@@ -12,6 +12,7 @@ User: Eunice Chen (UCSD bioinformatician, ejc043@ucsd.edu). Practitioner-level �
 src/taiji_agent/        Python package (CLI scaffold; cli, config, detect, samplesheet, validate)
 skills/                 Plugin-style skills (the bulk of the project's logic lives here)
   build-taiji-input/        produces the bulk-Taiji input xlsx
+  coembed-construct/        co-embeds separate-assay scRNA + scATAC into shared latent space (Stuart/Signac integrate_atac vignette)
   detect-dataset-type/      classifies a directory as bulk/SC/mixed/unknown + SC sub-modality
   fetch-references/         idempotent downloader for FASTA + GTF + MEME (per genome)
   pseudobulk-construct/     bridges single-cell objects to bulk Taiji inputs
@@ -36,7 +37,7 @@ pyproject.toml          declares the `taiji-agent` package + `taiji-agent` CLI e
 
 ## Skills currently built
 
-Six production skills, all chainable end-to-end. The `taiji/` directory is reserved for a future umbrella skill but is empty today.
+Seven production skills, all chainable end-to-end. The `taiji/` directory is reserved for a future umbrella skill but is empty today.
 
 ### 1. `detect-dataset-type` — pre-flight classifier
 
@@ -73,6 +74,29 @@ Six production skills, all chainable end-to-end. The `taiji/` directory is reser
 
 **Status:** eval loop closed at 100% pass rate with-skill vs 11.9% without-skill — strongest delta in the project. Verified on 8 fixture configurations.
 
+### 3a. `coembed-construct` — separate-assay scRNA + scATAC → shared latent space
+
+**Purpose:** When the user has two separate Seurat objects (one scRNA, one scATAC) for the same biological system, run the [Stuart 2019 / Signac integrate_atac vignette](https://stuartlab.org/signac/articles/integrate_atac) end-to-end and emit a single coembed `.rds` that drops directly into `pseudobulk-construct` with `--use-existing-clusters`.
+
+**Pipeline (`coembed.R`):**
+1. RNA: NormalizeData → FindVariableFeatures → ScaleData → RunPCA → RunUMAP.
+2. ATAC: set EnsDb annotation (hg38/hg19 → `EnsDb.Hsapiens.v86`; mm10/mm39 → `EnsDb.Mmusculus.v79`) → RunTFIDF → FindTopFeatures → RunSVD → RunUMAP.
+3. `GeneActivity` → ACTIVITY assay on ATAC, normalize + scale.
+4. `FindTransferAnchors(reference = rna, query = atac, query.assay = "ACTIVITY", reduction = "cca")`.
+5. `TransferData` of the RNA expression matrix → imputed RNA assay on ATAC cells (using the `lsi` weight reduction).
+6. `merge(rna, atac)` → coembed object; `meta.data$assay` ∈ {"RNA", "ATAC"} tags origin.
+7. Joint ScaleData → RunPCA → RunUMAP on RNA features (real for RNA-origin cells, imputed for ATAC-origin).
+8. FindNeighbors + FindClusters with the same scale-aware resolution binary search `pseudobulk-construct` uses (target ~200 cells/cluster, drops <20-cell clusters). Override with `--resolution <r>` or skip with `--no-cluster`.
+
+**What it deliberately does NOT do:** label transfer onto cells (`TransferData(refdata = seurat_annotations)`). Cluster IDs come from de novo clustering on the shared space; named cell-type labels are user-precondition (consistent with the "judgment-required upstream QC stays user-side" memory).
+
+**Outputs:**
+- `<output_dir>/coembed.rds` — drop-in for `pseudobulk-construct --input <path> --use-existing-clusters --fragments ...`
+- `<output_dir>/coembed_summary.json` — anchor count, gene-list size, chosen resolution, cluster table by `(cluster × assay)`.
+- `<output_dir>/qc/{umap.png, umap_coords.csv}` — UMAP panels colored by clusters / assay / metadata cols.
+
+**Status:** R script syntax-checked; sandbox can't run Seurat/Signac/EnsDb so first-run validation needed on SLURM. The `dependencies.yml` declares the Bioconductor EnsDb packages; `environment.sc.yml` was updated to include them in the `sc` profile.
+
 ### 3. `pseudobulk-construct` — single-cell → bulk-Taiji bridge
 
 **Purpose:** Convert a single-cell object (`.rds`, `.h5ad`, `.h5mu`) plus a fragments file into pseudobulk RNA GeneQuant TSVs and per-cluster narrowPeak files in the exact layout `build-taiji-input` consumes. Closes the SC → bulk Taiji loop.
@@ -85,7 +109,7 @@ Six production skills, all chainable end-to-end. The `taiji/` directory is reser
 - Optional: `--metadata-cols` (cross-product within each cluster — e.g. `genotype,tissue` → per-cluster `(WT,spleen)`, `(WT,siiel)`, `(KO,spleen)`, `(KO,siiel)` quads), `--cohort-col` (which metadata col's value becomes the manifest cohort label; default: first of `--metadata-cols`), `--target-cluster-size` (default 200, band [100, 300]), `--min-cluster-cells` (default 20), `--clustering-signal` (`wnn`/`rna`/`atac`; auto-selected from `sc_modality`), `--transferred-label-col` (default `predicted.id`), `--peak-caller` (`macs2`/`macs3`), `--rna-only`/`--atac-only`, `--dry-run`, `--yes`.
 
 **Pipeline (orchestrated by `pseudobulk.py`):**
-1. `detect-dataset-type` gate — refuses bulk; for sc-undetermined refuses with Signac integrate_atac pointer; for separate-assay routes to ATAC-LSI clustering with required transferred-label check.
+1. `detect-dataset-type` gate — refuses bulk; for sc-undetermined refuses with coembed-construct pointer; for separate-assay points at coembed-construct (run that first to produce a shared-space coembed.rds, then call this skill with `--use-existing-clusters`). The legacy ATAC-LSI clustering path with `--transferred-label-col` is still available for users who've integrated upstream themselves.
 2. Dependency check (Rscript + MACS2 on PATH; degrades to warning under `--dry-run`).
 3. `load_and_cluster.R` — loads object (extension dispatch: `.rds` direct, `.h5ad` via SeuratDisk *iff* the user installed it manually — no longer auto-installed, see SC notes in dependencies.yml — `.h5mu` via MuDataSeurat), runs Seurat/Signac WNN clustering (or RNA-only PCA / ATAC-only LSI), scale-aware resolution binary search (seed `r0 = 0.15·log2(N/1000)·sqrt(target_n_clusters/20)`, clamped to [0.05, 3.0], up to 8 iterations targeting mean cluster size in [100, 300]), drops <20-cell clusters and sub-groups, writes `clusters.csv`, `resolution_trace.json`, `groups_plan.json`, and per-group barcode files.
 4. `aggregate_rna.R` — sums raw counts per `(cluster × metadata_col × value)` group, writes 2-column GeneQuant TSV (no header) per group.
@@ -228,28 +252,46 @@ Output/Partial/<sample>_output/
                               │                              │
                        detect-dataset-type ─┐                │
                               │             ├── auto-attach to active run
-            ┌─────────────────┴───────────┐ │  via <wd>/log/active_run
-            ▼                             ▼ │  pointer; emit stage entries
-      classification=bulk         classification=single-cell
-            │                             │
-            │                    pseudobulk-construct ────────┤
-            │                             │                   │
-            │                         manifest.tsv            │
-            │                             │                   │
-            └────────►   build-taiji-input  ◄─────────────────┤
-                              │                               │
-                              ▼                               │
-                  taiji_input.xlsx (Active + active_metadata) │
-                              │                               │
-                              ▼                               │
+            ┌─────────────────┴────────┐    │  via <wd>/log/active_run
+            ▼                          ▼    │  pointer; emit stage entries
+      classification=bulk      classification=single-cell
+            │                          │
+            │           ┌──────────────┴──────────────┐
+            │           ▼                             ▼
+            │    sc_modality=multiome     sc_modality=separate-assay
+            │    (.h5mu / cellranger-arc)   (one .rds RNA + one .rds ATAC)
+            │           │                             │
+            │           │                  coembed-construct ──┐
+            │           │                  (Stuart/Signac      │
+            │           │                   integrate_atac:    │
+            │           │                   anchors → impute   │
+            │           │                   RNA → merge → joint│
+            │           │                   PCA/UMAP → cluster)│
+            │           │                             │        │
+            │           │                       coembed.rds    │
+            │           │                             │        │
+            │           ▼                             ▼        │
+            │    pseudobulk-construct  ◄───  pseudobulk-construct
+            │    (--clustering-signal wnn)   (--use-existing-clusters)
+            │           │                             │        │
+            │           └──────────────┬──────────────┘        │
+            │                          │                       │
+            │                       manifest.tsv               │
+            │                          │                       │
+            └────────►   build-taiji-input  ◄──────────────────┤
+                              │                                │
+                              ▼                                │
+                  taiji_input.xlsx (Active + active_metadata)  │
+                              │                                │
+                              ▼                                │
               taiji-runner: split xlsx → per-sample TSVs/configs ─┤
-                              │                                  │
-                              ▼                                  │
-              for each sample: bulk Taiji binary               │
-                  (`taiji run --config <sample>_config.yml`)   │
-                              │                                  │
-                              ▼                                  │
-              workflow-log.finalize(status) ─────────────────────┘
+                              │                                   │
+                              ▼                                   │
+              for each sample: bulk Taiji binary                  │
+                  (`taiji run --config <sample>_config.yml`)      │
+                              │                                   │
+                              ▼                                   │
+              workflow-log.finalize(status) ──────────────────────┘
 ```
 
 Each step gates on the previous one and produces inputs in the next step's expected format with **no glue code in between**. The `manifest.tsv` from `pseudobulk-construct` is a drop-in for `build-taiji-input --samples`.

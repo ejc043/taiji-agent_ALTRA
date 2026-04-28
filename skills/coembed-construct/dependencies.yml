@@ -1,0 +1,38 @@
+# Runtime dependencies for the coembed-construct skill.
+# Read by bin/doctor.sh to verify the install before a run.
+
+skill: coembed-construct
+profile: sc          # SC-only — needs R + Seurat + Signac + EnsDb annotations.
+purpose: Co-embed separate-assay scRNA-seq + scATAC-seq into a shared latent
+         space (Stuart 2019 / Signac integrate_atac vignette workflow). Output
+         is a single Seurat .rds with shared PCA/UMAP and de novo clusters,
+         drop-in for pseudobulk-construct's --use-existing-clusters mode.
+
+binaries:
+  - {name: Rscript, min_version: "4.2", purpose: "R interpreter"}
+
+python_packages:
+  - {name: python, min_version: "3.10"}
+  - {name: pyyaml, import_name: yaml, optional: true, min_version: "6.0"}
+
+r_packages:
+  - {name: Seurat,         min_version: "5.0",  source: "bioconda"}
+  - {name: Signac,         min_version: "1.12", source: "bioconda"}
+  - {name: GenomicRanges,                       source: "bioconda"}
+  - {name: optparse,                            source: "conda"}
+  - {name: jsonlite,                            source: "conda"}
+  # EnsDb annotations — needed for Signac's GeneActivity (maps ATAC peaks to
+  # gene bodies + 2 kb upstream regions). One per species.
+  - {name: EnsDb.Hsapiens.v86,    source: "bioconda",
+     required_for: "human (hg38, hg19) GeneActivity"}
+  - {name: EnsDb.Mmusculus.v79,   source: "bioconda",
+     required_for: "mouse (mm10, mm39) GeneActivity"}
+
+notes: |
+  Soft-imports detect-dataset-type for the modality gate. Refuses non-
+  separate-assay inputs (multiome doesn't need coembedding; bulk inputs
+  are out of scope).
+
+  Output coembed.rds carries meta.data$assay ∈ {"RNA", "ATAC"} so downstream
+  pseudobulk-construct can filter to RNA-origin cells for counts aggregation
+  and ATAC-origin cells for fragment-based peak calling.

@@ -386,6 +386,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Skip the QC UMAP rendering in load_and_cluster.R "
                         "(default: write qc/umap.png with panels for clusters, "
                         "assay [if present], and detected metadata cols).")
+    p.add_argument("--use-existing-clusters", action="store_true",
+                   help="Skip clustering — use the seurat_clusters column "
+                        "already in the input object (e.g. when the input is "
+                        "a coembed-construct output). Without this flag, the "
+                        "skill re-clusters on the chosen --clustering-signal, "
+                        "which discards any pre-computed shared-space "
+                        "clustering you already did.")
     args = p.parse_args(argv)
 
     if args.rna_only and args.atac_only:
@@ -448,6 +455,7 @@ def main(argv: list[str] | None = None) -> int:
         "--transferred-label-col", args.transferred_label_col,
         *( ["--metadata-cols", args.metadata_cols] if args.metadata_cols else [] ),
         *( ["--cohort-col", args.cohort_col] if args.cohort_col else [] ),
+        *( ["--use-existing-clusters"] if args.use_existing_clusters else [] ),
         *( ["--yes"] if args.yes else [] ),
         *( ["--no-plot"] if args.no_plot else [] ),
     )

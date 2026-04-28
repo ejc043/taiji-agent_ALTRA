@@ -101,6 +101,16 @@ aggregate_one <- function(group_spec) {
              as.character(clusters_df[[col]]) == as.character(metadata[[col]])
     }
   }
+  # For coembed objects (output of coembed-construct or any merged
+  # RNA+ATAC object): the meta.data 'assay' column flags which modality
+  # each cell came from. ATAC-origin cells in such objects carry IMPUTED
+  # RNA counts (from TransferData), not measured RNA — summing those
+  # would inflate the pseudobulk with model-derived values. Restrict to
+  # RNA-origin cells when the column is present. For non-coembed inputs
+  # (the column is absent), this is a no-op.
+  if ("assay" %in% colnames(clusters_df)) {
+    sel <- sel & as.character(clusters_df$assay) == "RNA"
+  }
   cells <- clusters_df$barcode[sel]
   cells <- intersect(cells, names(bc_to_col))
   if (length(cells) == 0) {
