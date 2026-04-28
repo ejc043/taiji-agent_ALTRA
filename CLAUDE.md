@@ -89,7 +89,7 @@ Six production skills, all chainable end-to-end. The `taiji/` directory is reser
 2. Dependency check (Rscript + MACS2 on PATH; degrades to warning under `--dry-run`).
 3. `load_and_cluster.R` — loads object (extension dispatch: `.rds` direct, `.h5ad` via SeuratDisk *iff* the user installed it manually — no longer auto-installed, see SC notes in dependencies.yml — `.h5mu` via MuDataSeurat), runs Seurat/Signac WNN clustering (or RNA-only PCA / ATAC-only LSI), scale-aware resolution binary search (seed `r0 = 0.15·log2(N/1000)·sqrt(target_n_clusters/20)`, clamped to [0.05, 3.0], up to 8 iterations targeting mean cluster size in [100, 300]), drops <20-cell clusters and sub-groups, writes `clusters.csv`, `resolution_trace.json`, `groups_plan.json`, and per-group barcode files.
 4. `aggregate_rna.R` — sums raw counts per `(cluster × metadata_col × value)` group, writes 2-column GeneQuant TSV (no header) per group.
-5. Per-cluster MACS2 (driven from Python): `gunzip -c fragments.tsv.gz | awk <barcode-filter> | macs2 callpeak -t - -f BED --nomodel --shift -100 --extsize 200 -q 0.05 --call-summits`. Standard scATAC per-cluster recipe.
+5. Per-cluster `Signac::CallPeaks` (driven from R via `call_peaks.R`): subsets the object per group, restricts to ATAC-side cells (using a `meta.data$assay == 'ATAC'` flag if present, else `Cells(obj[[atac_assay]])`), reconciles barcodes against `fragments.tsv.gz` via suffix-stripping (≥95% overlap required, fail-loud otherwise), attaches a per-group `CreateFragmentObject`, and shells out to MACS2/MACS3 through Signac. Emits `<group>_peaks.rds` (Signac object) and `<group>.narrowPeak` (ENCODE 10-col).
 6. Emits `manifest.tsv` with the exact columns `build-taiji-input --samples` expects: `name, cohort, group, rna_seq, atac_seq, genome`. Zero-glue handoff.
 
 **Outputs:**
@@ -98,9 +98,10 @@ output_dir/
 ├── clusters.csv                    per-cell barcode + cluster + metadata
 ├── resolution_trace.json           audit log of the resolution binary search
 ├── groups_plan.json                per-(cluster × meta_col × value) plan
-├── per_cluster_barcodes/<name>.txt one barcode per line, used by MACS2
+├── per_cluster_barcodes/<name>.txt one barcode per line (legacy from the pre-Signac MACS pipe; kept for downstream debugging / manual reruns)
 ├── rna/<name>.tsv                  GeneQuant TSV per group
-├── atac/<name>_peaks.narrowPeak    per-cluster MACS2 peaks
+├── atac/<name>.narrowPeak          per-cluster Signac::CallPeaks peaks (ENCODE 10-col)
+├── atac/<name>_peaks.rds           per-cluster Signac peak GRanges (saveRDS)
 └── manifest.tsv                    feeds build-taiji-input directly
 ```
 

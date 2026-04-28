@@ -3,11 +3,11 @@
 Thin Python CLI that:
   1. Gates on detect-dataset-type (refuses bulk / sc-undetermined / separate-assay
      without transferred labels).
-  2. Checks that Rscript + MACS2 are on PATH.
+  2. Checks that Rscript + MACS2/3 are on PATH.
   3. Shells out to R scripts for object loading, WNN clustering, resolution
-     binary search, and per-cluster RNA aggregation.
-  4. Shells out to MACS2 for per-cluster ATAC peak calling.
-  5. Emits a manifest.tsv shaped exactly like `build-taiji-input --samples`
+     binary search, per-cluster RNA aggregation, and per-cluster ATAC peak
+     calling via Signac::CallPeaks.
+  4. Emits a manifest.tsv shaped exactly like `build-taiji-input --samples`
      expects, so the two skills chain cleanly.
 
 The heavy lifting lives in sibling R scripts; this file is deliberately short
@@ -32,9 +32,7 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 # so a user can relocate the skill's scripts/ dir without breaking the CLI).
 R_LOAD_AND_CLUSTER = SCRIPT_DIR / "load_and_cluster.R"
 R_AGGREGATE_RNA = SCRIPT_DIR / "aggregate_rna.R"
-# (ATAC peak calling is driven directly from Python via MACS2; no R script
-# needed because per-cluster barcode lists are already written to
-# per_cluster_barcodes/ by load_and_cluster.R.)
+R_CALL_PEAKS = SCRIPT_DIR / "call_peaks.R"
 
 
 def _attach_log():
@@ -286,91 +284,10 @@ def run_rscript(script: Path, *args: str) -> None:
         sys.exit(proc.returncode)
 
 
-def macs2_genome_size(genome: str) -> str:
-    """Map genome tag -> MACS2 --gsize argument.
-
-    These are the effective-genome-size numbers MACS2 ships in its README
-    (rounded); callers should pass a genome tag understood by both this skill
-    and the downstream build-taiji-input (hg19, hg38, mm9, mm10, mm39).
-    """
-    table = {
-        "hg19": "hs",
-        "hg38": "hs",
-        "mm9":  "mm",
-        "mm10": "mm",
-        "mm39": "mm",
-    }
-    size = table.get(genome.lower())
-    if size is None:
-        raise SystemExit(
-            f"unsupported genome '{genome}'. Known: {sorted(table)}. If you "
-            "need another, extend macs2_genome_size() — MACS2 accepts any "
-            "integer bp count via --gsize."
-        )
-    return size
-
-
-def call_peaks(
-    fragments_path: Path,
-    barcodes_file: Path,
-    out_prefix: Path,
-    genome: str,
-    peak_caller: str,
-) -> Path | None:
-    """Call MACS2 on fragments restricted to a set of barcodes.
-
-    Strategy: use awk to filter fragments.tsv.gz to rows whose 4th column
-    (barcode) is in the per-cluster barcode list, then pipe to MACS2 with
-    --format BED (MACS2 accepts 3-column BED here; the per-cluster peak call
-    doesn't need insertion-site shifting beyond the standard --shift/--extsize
-    approach for ATAC).
-
-    Returns the narrowPeak path on success, None if MACS2 produced no peaks.
-    """
-    if not fragments_path.exists():
-        print(
-            f"WARNING: fragments file {fragments_path} missing; skipping peaks.",
-            file=sys.stderr,
-        )
-        return None
-
-    out_prefix.parent.mkdir(parents=True, exist_ok=True)
-    out_name = out_prefix.name
-    out_dir = out_prefix.parent
-
-    # Stream-filter fragments to the cluster's cells; MACS2 will read the
-    # resulting BED via a named pipe to avoid an intermediate file.
-    # awk -v FS=OFS=TAB checks column 4 against a barcodes set loaded via -v
-    # BARCFILE=.
-    awk_prog = (
-        'BEGIN {while ((getline b < BARCFILE) > 0) bc[b]=1; close(BARCFILE)} '
-        '{if ($4 in bc) print $1"\\t"$2"\\t"$3}'
-    )
-
-    # Use gunzip -> awk -> macs2 pipeline; macs2 reads stdin with `-t -`.
-    pipe_cmd = (
-        f"gunzip -c {fragments_path} | "
-        f"awk -v BARCFILE={barcodes_file} -F'\\t' -v OFS='\\t' "
-        f"'{awk_prog}' | "
-        f"{peak_caller} callpeak "
-        f"-t - -f BED --nomodel --shift -100 --extsize 200 "
-        f"-q 0.05 -g {macs2_genome_size(genome)} "
-        f"--call-summits -n {out_name} --outdir {out_dir} 2>&1"
-    )
-
-    print(f"[pseudobulk] $ {pipe_cmd}", file=sys.stderr)
-    proc = subprocess.run(pipe_cmd, shell=True, check=False)
-    if proc.returncode != 0:
-        print(
-            f"WARNING: {peak_caller} exited with {proc.returncode} for "
-            f"{out_name}; narrowPeak may be missing or empty.",
-            file=sys.stderr,
-        )
-
-    narrow = out_dir / f"{out_name}_peaks.narrowPeak"
-    if narrow.exists() and narrow.stat().st_size > 0:
-        return narrow
-    return None
+# (Per-group ATAC peak calling now lives in call_peaks.R via Signac::CallPeaks.
+# Python no longer drives MACS2 directly — moving it to R buys us Signac's
+# CreateFragmentObject plumbing and per-group barcode reconciliation against
+# the fragments file. See call_peaks.R for the suffix-stripping logic.)
 
 
 # ---------------------------------------------------------------------------
@@ -548,7 +465,10 @@ def main(argv: list[str] | None = None) -> int:
         for g in groups:
             g["rna_seq"] = str(args.output_dir / "rna" / f"{g['name']}.tsv")
 
-    # 6. ATAC peak calling (Python driver over MACS2).
+    # 6. ATAC peak calling (R-side, via Signac::CallPeaks). One Rscript call
+    #    handles all groups; per-group barcode reconciliation against the
+    #    fragments file (suffix-stripping), Fragment-object plumbing, and
+    #    narrowPeak emission all happen there.
     if (
         not args.rna_only
         and not args.dry_run
@@ -556,22 +476,27 @@ def main(argv: list[str] | None = None) -> int:
     ):
         atac_dir = args.output_dir / "atac"
         atac_dir.mkdir(exist_ok=True)
+        macs_path = shutil.which(args.peak_caller)
+        if macs_path is None:
+            print(
+                f"ERROR: --peak-caller '{args.peak_caller}' not on PATH; "
+                "cannot run Signac::CallPeaks.",
+                file=sys.stderr,
+            )
+            return 5
+        run_rscript(
+            R_CALL_PEAKS,
+            "--input",       str(args.input),
+            "--clusters",    str(args.output_dir / "clusters.csv"),
+            "--groups",      str(plan_path),
+            "--fragments",   str(args.fragments),
+            "--output-dir",  str(atac_dir),
+            "--genome",      args.genome,
+            "--macs-path",   macs_path,
+        )
         for g in groups:
-            barcodes_file = (
-                args.output_dir / "per_cluster_barcodes" / f"{g['name']}.txt"
-            )
-            if not barcodes_file.exists():
-                print(
-                    f"WARNING: barcodes file for {g['name']} missing; "
-                    "skipping.",
-                    file=sys.stderr,
-                )
-                continue
-            narrow = call_peaks(
-                args.fragments, barcodes_file,
-                atac_dir / g["name"], args.genome, args.peak_caller,
-            )
-            if narrow is not None:
+            narrow = atac_dir / f"{g['name']}.narrowPeak"
+            if narrow.exists() and narrow.stat().st_size > 0:
                 g["atac_seq"] = str(narrow)
 
     # 7. Write the build-taiji-input manifest.

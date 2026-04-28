@@ -36,17 +36,17 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 |-----------------------------|---------------------------------------------------------------------------------------|
 | `--input`                   | Path to the single-cell object (.rds / .h5ad / .h5mu). Required.                      |
 | `--fragments`               | Path to `fragments.tsv.gz` (plus `.tbi`). Required if peaks are to be called.         |
-| `--genome`                  | hg38 / hg19 / mm10 / mm39. Drives MACS2 `--gsize` and downstream-Taiji metadata.      |
+| `--genome`                  | hg38 / hg19 / mm10 / mm39. Drives Signac::CallPeaks `effective.genome.size` and downstream-Taiji metadata. |
 | `--metadata-cols`           | Comma-separated metadata columns to stratify on (e.g. `donor,condition`). Default: auto-detect categorical columns with 2-20 unique values, skipping cell-barcode-like columns. |
 | `--output-dir`              | Where the `rna/`, `atac/`, `clusters.csv`, `manifest.tsv` land.                       |
 | `--target-cluster-size`     | Target mean cluster size for the resolution search. Default: `200` (range `[100, 300]`). |
 | `--min-cluster-cells`       | Drop clusters with fewer than this many cells. Default: `20`. Applied per modality for separate-assay, combined for multiome/multiome. |
 | `--clustering-signal`       | `wnn` (default for multiome), `rna`, or `atac`. Auto-selected from detect-dataset-type's `sc_modality`. |
 | `--transferred-label-col`   | Column in `@meta.data` that holds Signac-transferred labels for separate-assay. Default: `predicted.id`. |
-| `--peak-caller`             | `macs2` (default) or `macs3`. Only affects the binary name; the invocation flags are the same. |
+| `--peak-caller`             | `macs2` or `macs3`. Auto-detected from PATH (prefers macs3); pseudobulk.py resolves the full binary path and passes it to Signac::CallPeaks via `macs2.path`. |
 | `--skip-data-type-check`    | Bypass the detect-dataset-type pre-flight (use only if you know the input is SC).     |
 | `--rna-only` / `--atac-only`| Restrict output to a single modality (useful for RNA-only scRNA objects).             |
-| `--dry-run`                 | Plan the resolution search and list planned outputs without touching MACS2.           |
+| `--dry-run`                 | Plan the resolution search and list planned outputs without invoking peak calling.    |
 
 ## Dependencies the skill expects in the execution environment
 
@@ -85,4 +85,4 @@ On the user's SLURM environment these are typically loaded via `module load r/4.
 - **WNN over single-modality clustering for multiome**: this is the standard Seurat v5 recommendation for paired RNA+ATAC data. It gives noticeably better separation of rare cell types than clustering on either modality alone, at the cost of ~2× runtime for `FindMultiModalNeighbors`.
 - **Hard 20-cell floor, no soft option**: peaks called from <20 cells are dominated by noise; summed counts from <20 cells are too sparse to be a meaningful "bulk" sample. Lowering the floor would silently degrade the quality of downstream Taiji.
 - **Sum raw counts, not normalized**: bulk RNA-seq tools expect raw counts. Summing normalized values is never the right move.
-- **Per-cluster MACS2, not global peaks + subset counting**: calling peaks on each pseudobulk individually catches cluster-specific regulatory elements that would be smoothed out by a single global call. It's the slower path but the biologically correct one.
+- **Per-cluster Signac::CallPeaks, not global peaks + subset counting**: calling peaks on each pseudobulk individually catches cluster-specific regulatory elements that would be smoothed out by a single global call. It's the slower path but the biologically correct one. Going through Signac (instead of a direct gunzip|awk|macs pipe) buys us proper per-group `CreateFragmentObject` plumbing and per-group barcode reconciliation against `fragments.tsv.gz` — Seurat objects often carry suffixes (`AAACGCT-1`, `ATAC_AAACGCT`) that the raw 10x fragments file doesn't, and `call_peaks.R` strips them automatically (≥95% overlap required after correction, fail-loud otherwise).
