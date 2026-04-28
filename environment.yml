@@ -40,7 +40,7 @@ dependencies:
   # ---- SC profile ----
   - r-base>=4.3
   - r-seurat>=5.0
-  - bioconductor-signac>=1.12
+  - r-signac>=1.12      # bioconda package name is `r-signac`, NOT `bioconductor-signac`
   - r-matrix
   - bioconductor-genomicranges
   - r-dplyr

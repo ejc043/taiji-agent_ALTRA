@@ -22,7 +22,7 @@ dependencies:
 
   # ---- Seurat / Signac stack (pseudobulk-construct) ----
   - r-seurat>=5.0
-  - bioconductor-signac>=1.12
+  - r-signac>=1.12      # bioconda package name is `r-signac`, NOT `bioconductor-signac`
 
   # ---- Supporting R packages ----
   - r-matrix

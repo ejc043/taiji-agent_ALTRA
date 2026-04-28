@@ -95,7 +95,13 @@ Seven production skills, all chainable end-to-end. The `taiji/` directory is res
 - `<output_dir>/coembed_summary.json` — anchor count, gene-list size, chosen resolution, cluster table by `(cluster × assay)`.
 - `<output_dir>/qc/{umap.png, umap_coords.csv}` — UMAP panels colored by clusters / assay / metadata cols.
 
-**Status:** R script syntax-checked; sandbox can't run Seurat/Signac/EnsDb so first-run validation needed on SLURM. The `dependencies.yml` declares the Bioconductor EnsDb packages; `environment.sc.yml` was updated to include them in the `sc` profile.
+**Status:** R script syntax-checked. R 4.2.0 is available in the sandbox at `/usr/local/bin/Rscript`, but Seurat / Signac / EnsDb are NOT pre-installed (slow Bioconductor compile from source — ~30 min). For real coembed runs, install on the target machine via `bin/install.sh --profile sc` and run there. Eunice's SLURM env has the full SC stack.
+
+**Real-data gotchas surfaced from a 60k+21k cell run** (D7 mouse, 4-sample-aggregated barcodes with `-1`/`-2`/`-3`/`-4` suffixes):
+- Inputs often arrive with their own pre-computed `pca`/`umap` (RNA) and `lsi`/`umap` (ATAC) reductions PLUS per-modality `seurat_clusters`. Recomputing from scratch is the safe default but wastes ~10 min — pass `--reuse-rna-reductions` and/or `--reuse-atac-reductions` when the inputs are clean. The skill always preserves the input cluster labels as `rna_input_clusters` / `atac_input_clusters` (non-clobbering) so the merged object lets you compare per-modality vs joint clustering downstream.
+- Multi-sample-aggregated barcodes (10x Multi / cellranger-aggr) have suffixes `-1`/`-2`/.../`-N` matching across the RNA object, ATAC object, and fragments file. Identity-match works as-is; the skill's suffix-stripping reconciliation logic doesn't kick in (correct).
+- ATAC objects sometimes arrive with a pre-existing `RNA` assay (from a prior integrate_atac, or sliced multiome). The skill OVERWRITES it with fresh TransferData-imputed values and logs a NOTE — if you want to preserve the original, copy it under a different assay name first.
+- Joint PCA on >50k merged cells needs 10–20 GB peak RAM. SBATCH `--mem=128G` is recommended for >80k merged cells. See `references/coembed_strategy.md` for the resource-estimation reasoning.
 
 ### 3. `pseudobulk-construct` — single-cell → bulk-Taiji bridge
 
@@ -131,7 +137,7 @@ output_dir/
 └── manifest.tsv                    feeds build-taiji-input directly
 ```
 
-**Status:** Python orchestrator + gates verified across detect-dataset-type's 11 fixtures (bulk redirect, sc-undetermined refusal, multiome auto-WNN, separate-assay auto-ATAC, dep-check error path, --dry-run graceful degradation). R scripts authored against Seurat v5 / Signac ≥1.12 but **not yet syntax-checked or end-to-end run** because R isn't in this sandbox; needs first-run validation on Eunice's SLURM env. No fixture .rds/.h5ad/.h5mu files exist; no eval loop yet.
+**Status:** Python orchestrator + gates verified across detect-dataset-type's 11 fixtures (bulk redirect, sc-undetermined refusal, multiome auto-WNN, separate-assay auto-ATAC, dep-check error path, --dry-run graceful degradation). R scripts syntax-checked against Seurat v5 / Signac ≥1.12. **R is available** at `/usr/local/bin/Rscript` (4.2.0) in the sandbox, but the Seurat/Signac/EnsDb stack isn't pre-installed — install via `bin/install.sh --profile sc` on the machine you're actually running on. Real-data integration testing happens on the target machine (Mac or SLURM); the sandbox can probe `.rds` structure via base R `readRDS` to inspect class slots / metadata cols / barcode patterns without the full SC stack — useful for pre-flight diagnosis even when end-to-end runs aren't possible here.
 
 ### 4. `workflow-log` — per-run audit trail
 
@@ -338,7 +344,7 @@ bash bin/doctor.sh --profile base                             # filter by profil
 | Profile | What's in it | Enables | Disk | Time |
 |---------|--------------|---------|------|------|
 | `base` (default) | Python + click/pydantic/pyyaml + pandas + openpyxl + macs3 + local pkg | detect-dataset-type, build-taiji-input, fetch-references, taiji-runner, workflow-log | ~500 MB | ~5 min |
-| `sc` (additive) | r-base + r-seurat + bioconductor-signac + Bioconductor + r-remotes + (postinstall) MuDataSeurat | pseudobulk-construct | +3-4 GB | +15-30 min |
+| `sc` (additive) | r-base + r-seurat + r-signac + Bioconductor (GenomicRanges + EnsDb) + r-remotes + (postinstall) MuDataSeurat | pseudobulk-construct, coembed-construct | +3-4 GB | +15-30 min |
 | `dev` (orthogonal) | pytest + pytest-cov + ruff + mypy + ipython | author tooling | +500 MB | +3 min |
 | `full` | base + sc + dev | everything | ~5 GB | ~25 min |
 
@@ -408,7 +414,7 @@ The threat model this addresses is "agent makes a mistake or a buggy script writ
 
 - **The Taiji binary cannot be executed from this sandbox.** Sandbox is aarch64; binaries are x86_64 ELF (Linux variants) or Mach-O (macOS). No qemu-user / box64 / fex-emu emulator is installed, and `sudo apt install` is blocked by `no_new_privileges`. The kernel rejects with `Exec format error`. Practical consequence: every "run Taiji" step is either Mac-side (Eunice's machine) or SLURM-side. The agent's role from the sandbox is strictly **prepare inputs + validate outputs**.
 - **Workspace folder is shared between sandbox and Mac.** Files dropped into `<workspace>/data/`, `<workspace>/dependencies_data/`, `<workspace>/runs/<name>/Output/` from either side become immediately visible to the other. Use this for handoffs: Mac runs Taiji → outputs land in workspace → sandbox can validate / summarize / log without re-running.
-- **R / MACS3 are also not in the sandbox.** Only `pseudobulk-construct` needs them; the SC branch is also Mac-side.
+- **R 4.2.0 IS in the sandbox** (`/usr/local/bin/Rscript`), but Seurat / Signac / EnsDb / GenomicRanges / optparse aren't pre-installed — Bioconductor compile-from-source takes ~30 min. MACS3 is also not in the sandbox by default. **What this means in practice:** you can use base R `readRDS` to inspect Seurat object slots / class / metadata columns / barcode formats WITHOUT installing the full SC stack — extremely useful for pre-flight diagnosis (catching issues like multi-sample barcode suffixes, pre-existing reductions, or unexpected assay layouts before submitting a long SLURM run). Full coembed/pseudobulk pipelines still belong on Mac/SLURM where the SC stack is installed.
 
 ## Not yet built (scoped but pending)
 

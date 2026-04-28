@@ -17,7 +17,8 @@ python_packages:
 
 r_packages:
   - {name: Seurat,         min_version: "5.0",  source: "bioconda"}
-  - {name: Signac,         min_version: "1.12", source: "bioconda"}
+  - {name: Signac,         min_version: "1.12", source: "bioconda",
+     conda_pkg: "r-signac"}    # bioconda packages it as r-signac, NOT bioconductor-signac
   - {name: GenomicRanges,                       source: "bioconda"}
   - {name: optparse,                            source: "conda"}
   - {name: jsonlite,                            source: "conda"}

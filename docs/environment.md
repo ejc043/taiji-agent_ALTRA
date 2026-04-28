@@ -17,7 +17,7 @@ into composable profiles so users only install what they'll use:
 | Profile | Contents | Enables | Disk | Time |
 |---------|----------|---------|------|------|
 | `base` (default) | Python + xlsx I/O + MACS3 + local taiji-agent package | 5 of 6 skills (everything except pseudobulk-construct) | ~500 MB | ~5 min |
-| `sc` (additive) | R-base + r-seurat + bioconductor-signac + supporting Bioconductor + r-remotes + GitHub R package (MuDataSeurat for `.h5mu`) | pseudobulk-construct | +3-4 GB | +15-30 min |
+| `sc` (additive) | R-base + r-seurat + r-signac + supporting Bioconductor (GenomicRanges + EnsDb) + r-remotes + GitHub R package (MuDataSeurat for `.h5mu`) | pseudobulk-construct, coembed-construct | +3-4 GB | +15-30 min |
 | `dev` (orthogonal) | pytest + pytest-cov + ruff + mypy + ipython | author tooling for editing the skills themselves | +500 MB | +3 min |
 | `full` | base + sc + dev | all skills + dev tooling | ~5 GB | ~25 min |
 
