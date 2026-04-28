@@ -408,6 +408,48 @@ else
   echo "[install] --skip-taiji set; not downloading the Taiji binary."
 fi
 
+# ---- Register env's parent dir in solver's envs_dirs ----
+# So `<solver> activate <name>` works in any future shell, regardless of
+# whatever MAMBA_ROOT_PREFIX is set to. By default, micromamba/mamba/conda
+# only resolve env names under their current root prefix's envs/ subdir;
+# on clusters where the env lives under a non-default prefix (here:
+# /stg3/...) the user has to type the full path every time.
+# Appending to envs_dirs writes a persistent entry into the solver's
+# config (~/.condarc / ~/.mambarc) so name lookup always finds this env.
+register_envs_dir() {
+  local env_path="$1"
+  [[ -z "$env_path" || ! -d "$env_path" ]] && return 0
+  local parent
+  parent=$(dirname "$env_path")
+  # Already in envs_dirs? skip to avoid duplicate entries on re-runs.
+  if "$SOLVER" config list 2>/dev/null | grep -Fq -- "- $parent"; then
+    echo "[install] envs_dirs already registers '$parent'; skipping."
+    return 0
+  fi
+  # Command syntax differs across solvers:
+  #   micromamba: `config append envs_dirs <path>`
+  #   mamba/conda: `config --append envs_dirs <path>`
+  local rc
+  case "$SOLVER" in
+    micromamba)
+      "$SOLVER" config append envs_dirs "$parent" >/dev/null 2>&1; rc=$?
+      ;;
+    mamba|conda)
+      "$SOLVER" config --append envs_dirs "$parent" >/dev/null 2>&1; rc=$?
+      ;;
+    *) rc=99 ;;
+  esac
+  if [[ "$rc" -eq 0 ]]; then
+    echo "[install] registered '$parent' in $SOLVER envs_dirs"
+    echo "[install]   ($SOLVER activate $ENV_NAME will now work in any shell)"
+  else
+    echo "[install] NOTE: could not auto-register envs_dirs via $SOLVER config." >&2
+    echo "[install]   Activation by name may fail in fresh shells; use the" >&2
+    echo "[install]   full-prefix form instead: $SOLVER activate $env_path" >&2
+  fi
+}
+register_envs_dir "${ENV_PATH:-}"
+
 # ---- Final summary ----
 TAIJI_PATH="(skipped)"
 [[ "$SKIP_TAIJI" -eq 0 ]] && TAIJI_PATH="${REPO_ROOT}/binaries/taiji"
@@ -416,11 +458,13 @@ cat <<EOF
 
 [install] SUCCESS
   env name:       $ENV_NAME
+  env path:       ${ENV_PATH:-(unknown)}
   profile:        $PROFILE  (=${PROFILES[*]})
   Taiji binary:   $TAIJI_PATH
 
-Activate with:
-  $SOLVER activate $ENV_NAME
+Activate with (in this order of preference):
+  $SOLVER activate $ENV_NAME            # by-name (works in any shell after the envs_dirs registration above)
+  $SOLVER activate ${ENV_PATH:-<env_path>}   # by-prefix (always works, even before envs_dirs takes effect)
 
 Verify everything is wired up:
   bash bin/doctor.sh --profile $PROFILE

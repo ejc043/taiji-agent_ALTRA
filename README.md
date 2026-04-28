@@ -51,23 +51,13 @@ What this does, in order:
 
 ### 3. Stage reference data (one-time per machine per genome)
 
-Activate the env. On managed clusters where `micromamba` doesn't auto-discover envs by name, look up the install prefix first and activate by full path:
-
 ```bash
-# Find the env's prefix:
-micromamba env list
-# Output looks like:
-#   Name           Active     Path
-#   taiji-agent               /stg3/data1/eunice/.local/share/mamba/envs/taiji-agent
-#                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-# Activate by full path (works regardless of name-resolution config):
-micromamba activate /stg3/data1/eunice/.local/share/mamba/envs/taiji-agent
-# (On a Mac with default config, `micromamba activate taiji-agent` also works.)
-
+micromamba activate taiji-agent
 python skills/fetch-references/scripts/fetch.py \
   --genome hg38 --output dependencies_data/ --update-genomes-yml
 ```
+
+`bin/install.sh` registers the env's parent directory in your solver's `envs_dirs` config at install time, so `<solver> activate taiji-agent` works in any future shell — even on managed clusters where the env lives under a non-default prefix (e.g. `/stg3/data1/eunice/.local/share/mamba/envs/taiji-agent`). If the by-name form ever fails (e.g. you installed the env before this auto-registration was added, or the config write was blocked), look up the prefix with `micromamba env list` and activate by full path.
 
 Downloads to `dependencies_data/hg38/`:
 - `genome.fa` (GENCODE primary assembly, ~3 GB uncompressed)
@@ -143,10 +133,10 @@ Outputs land at `runs/<your_run_name>/Output/Partial/<sample>/GeneRanks.tsv` (TF
 
 ### Option B — agentic flow via Claude Code
 
-From your `taiji-agent/` directory after activating the env (use the by-path form on clusters — see step 3 above for how to find the prefix):
+From your `taiji-agent/` directory after activating the env:
 
 ```bash
-micromamba activate /path/to/mamba/envs/taiji-agent   # full prefix; or `taiji-agent` if name-resolution works
+micromamba activate taiji-agent
 claude
 ```
 
