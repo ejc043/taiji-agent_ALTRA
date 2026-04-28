@@ -366,59 +366,159 @@ writeLines(
 )
 
 # ------------------------------------------------------------------------
-# QC UMAP — same panels load_and_cluster.R writes
+# QC UMAPs — always rendered unless --no-plot
 # ------------------------------------------------------------------------
+# Two figures get written:
+#
+#   qc/umap_pre_merge.png   — Stuart-vignette-style side-by-side: RNA's
+#                             own UMAP next to ATAC's own UMAP. Lets you
+#                             see what each modality looked like BEFORE
+#                             integration. Sanity check: clusters should
+#                             look reasonable per-modality independently.
+#
+#   qc/umap.png             — Joint UMAP on the shared (post-merge) PCA,
+#                             with one panel per group-by axis:
+#                               1. seurat_clusters — the de novo joint
+#                                  clusters (when not --no-cluster)
+#                               2. assay — RNA vs ATAC origin, distinct
+#                                  qualitative colors. The integration
+#                                  QC panel: well-integrated data shows
+#                                  cells of both colors mixed across
+#                                  clusters; poorly-integrated data
+#                                  shows clusters segregating by assay.
+#                               3..N — one panel per --metadata-cols
+#                                  entry (genotype, tissue, etc.).
+#                                  Missing cols emit a WARN.
+#
+# Plus qc/umap_coords.csv with barcode + 2D coords + assay + cluster
+# for re-plotting outside R (matplotlib/plotly/etc.).
 
-if (!opt$`no-plot` && requireNamespace("ggplot2", quietly = TRUE)) {
-  qc_dir <- file.path(output_dir, "qc")
-  dir.create(qc_dir, recursive = TRUE, showWarnings = FALSE)
+if (!opt$`no-plot`) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    message("[coembed] ggplot2 not available; skipping QC UMAPs.")
+  } else {
+    qc_dir <- file.path(output_dir, "qc")
+    dir.create(qc_dir, recursive = TRUE, showWarnings = FALSE)
 
-  emb <- Embeddings(coembed, reduction = "umap")
-  umap_df <- data.frame(
-    barcode = rownames(emb),
-    umap_1  = emb[, 1],
-    umap_2  = emb[, 2],
-    assay   = coembed$assay,
-    seurat_cluster = if (!opt$`no-cluster`) as.character(Idents(coembed)) else NA,
-    stringsAsFactors = FALSE
-  )
-  write.csv(umap_df, file.path(qc_dir, "umap_coords.csv"), row.names = FALSE)
+    # ----- Coords CSV (cheap, useful for downstream Python plotting) ----
+    emb <- Embeddings(coembed, reduction = "umap")
+    umap_df <- data.frame(
+      barcode = rownames(emb),
+      umap_1  = emb[, 1],
+      umap_2  = emb[, 2],
+      assay   = coembed$assay,
+      seurat_cluster = if (!opt$`no-cluster`) as.character(Idents(coembed)) else NA,
+      stringsAsFactors = FALSE
+    )
+    # Carry user-requested metadata cols into the CSV too, so external
+    # plots can color by them without reloading the .rds.
+    for (mc in intersect(meta_cols, colnames(coembed@meta.data))) {
+      umap_df[[mc]] <- coembed@meta.data[[mc]]
+    }
+    write.csv(umap_df, file.path(qc_dir, "umap_coords.csv"), row.names = FALSE)
 
-  groupby_cols <- c()
-  if (!opt$`no-cluster`) groupby_cols <- c(groupby_cols, "seurat_clusters")
-  groupby_cols <- c(groupby_cols, "assay")
-  groupby_cols <- c(groupby_cols,
-                    intersect(meta_cols, colnames(coembed@meta.data)))
-  groupby_cols <- unique(groupby_cols)
+    # ----- Validate metadata cols up-front, warn on missing -------------
+    missing_cols <- setdiff(meta_cols, colnames(coembed@meta.data))
+    present_cols <- intersect(meta_cols, colnames(coembed@meta.data))
+    if (length(missing_cols) > 0) {
+      message("[coembed] WARN: --metadata-cols not present on merged ",
+              "object (skipped panels): ",
+              paste(missing_cols, collapse = ", "),
+              ". These columns must exist on at least one of the input ",
+              "objects to survive the merge.")
+    }
 
-  panels <- list()
-  for (col in groupby_cols) {
-    p <- tryCatch(
-      DimPlot(coembed, reduction = "umap", group.by = col,
-              label = (col == "seurat_clusters"), repel = TRUE) +
-        ggplot2::ggtitle(col),
+    # ----- Pre-merge side-by-side (Stuart vignette style) ---------------
+    pre_merge_panels <- list()
+    rna_p <- tryCatch(
+      DimPlot(rna, reduction = "umap", group.by = "assay") +
+        ggplot2::ggtitle(sprintf("RNA only (n=%d cells)", ncol(rna))) +
+        ggplot2::scale_color_manual(values = c("RNA" = "#1f77b4")) +
+        Seurat::NoLegend(),
       error = function(e) {
-        message("[coembed] DimPlot[", col, "] failed: ", conditionMessage(e))
-        NULL
+        message("[coembed] pre-merge RNA DimPlot failed: ",
+                conditionMessage(e)); NULL
       }
     )
-    if (!is.null(p)) panels[[length(panels) + 1]] <- p
-  }
+    atac_p <- tryCatch(
+      DimPlot(atac, reduction = "umap.atac", group.by = "assay") +
+        ggplot2::ggtitle(sprintf("ATAC only (n=%d cells)", ncol(atac))) +
+        ggplot2::scale_color_manual(values = c("ATAC" = "#ff7f0e")) +
+        Seurat::NoLegend(),
+      error = function(e) {
+        message("[coembed] pre-merge ATAC DimPlot failed: ",
+                conditionMessage(e)); NULL
+      }
+    )
+    if (!is.null(rna_p))  pre_merge_panels[[length(pre_merge_panels) + 1]] <- rna_p
+    if (!is.null(atac_p)) pre_merge_panels[[length(pre_merge_panels) + 1]] <- atac_p
 
-  if (length(panels) > 0) {
-    out_png <- file.path(qc_dir, "umap.png")
-    if (requireNamespace("patchwork", quietly = TRUE) && length(panels) > 1) {
-      ncol_plot <- min(2, length(panels))
-      n_rows <- ceiling(length(panels) / ncol_plot)
-      combined <- patchwork::wrap_plots(panels, ncol = ncol_plot)
-      ggplot2::ggsave(out_png, plot = combined,
-                      width = 6 * ncol_plot, height = 5 * n_rows,
-                      dpi = 100, bg = "white")
-    } else {
-      ggplot2::ggsave(out_png, plot = panels[[1]],
-                      width = 7, height = 5, dpi = 100, bg = "white")
+    if (length(pre_merge_panels) > 0 &&
+        requireNamespace("patchwork", quietly = TRUE)) {
+      pre_png <- file.path(qc_dir, "umap_pre_merge.png")
+      ggplot2::ggsave(
+        pre_png,
+        plot = patchwork::wrap_plots(pre_merge_panels, ncol = 2),
+        width = 12, height = 5, dpi = 100, bg = "white"
+      )
+      message("[coembed] pre-merge UMAP -> ", pre_png)
     }
-    message("[coembed] QC UMAP -> ", out_png)
+
+    # ----- Joint UMAP panels (post-merge, shared space) -----------------
+    # Order: clusters (if any) -> assay (always second so it's prominent)
+    #        -> each user-requested metadata col, in order they were given.
+    groupby_cols <- c()
+    if (!opt$`no-cluster`) groupby_cols <- c(groupby_cols, "seurat_clusters")
+    groupby_cols <- c(groupby_cols, "assay", present_cols)
+    groupby_cols <- unique(groupby_cols)
+
+    # Cell counts for the title of the assay panel.
+    n_rna  <- sum(coembed$assay == "RNA")
+    n_atac <- sum(coembed$assay == "ATAC")
+
+    panels <- list()
+    for (col in groupby_cols) {
+      title <- if (col == "assay") {
+        sprintf("assay  (RNA: %d  /  ATAC: %d)", n_rna, n_atac)
+      } else if (col == "seurat_clusters" && !is.na(chosen_resolution)) {
+        sprintf("seurat_clusters  (res=%.3f, n=%d)",
+                chosen_resolution, length(unique(Idents(coembed))))
+      } else col
+      p <- tryCatch({
+        plot <- DimPlot(coembed, reduction = "umap", group.by = col,
+                        label = (col == "seurat_clusters"), repel = TRUE) +
+               ggplot2::ggtitle(title)
+        # Explicit qualitative colors for the assay panel so RNA vs ATAC
+        # is unmistakable on grayscale prints / colorblind viewers.
+        if (col == "assay") {
+          plot <- plot + ggplot2::scale_color_manual(
+            values = c("RNA" = "#1f77b4", "ATAC" = "#ff7f0e"))
+        }
+        plot
+      }, error = function(e) {
+        message("[coembed] DimPlot[", col, "] failed: ", conditionMessage(e))
+        NULL
+      })
+      if (!is.null(p)) panels[[length(panels) + 1]] <- p
+    }
+
+    if (length(panels) > 0) {
+      out_png <- file.path(qc_dir, "umap.png")
+      if (requireNamespace("patchwork", quietly = TRUE) && length(panels) > 1) {
+        ncol_plot <- min(2, length(panels))
+        n_rows <- ceiling(length(panels) / ncol_plot)
+        combined <- patchwork::wrap_plots(panels, ncol = ncol_plot)
+        ggplot2::ggsave(out_png, plot = combined,
+                        width = 6 * ncol_plot, height = 5 * n_rows,
+                        dpi = 100, bg = "white")
+      } else {
+        ggplot2::ggsave(out_png, plot = panels[[1]],
+                        width = 7, height = 5, dpi = 100, bg = "white")
+      }
+      message("[coembed] joint UMAP -> ", out_png,
+              " (", length(panels), " panels: ",
+              paste(groupby_cols, collapse = ", "), ")")
+    }
   }
 }
 
