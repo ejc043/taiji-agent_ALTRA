@@ -348,7 +348,14 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Directory to write outputs.")
     p.add_argument("--metadata-cols", default=None,
                    help="Comma-separated metadata columns to stratify on. "
-                        "Default: auto-detect.")
+                        "Multiple columns produce the FULL CROSS-PRODUCT "
+                        "within each cluster (e.g. genotype,tissue -> per "
+                        "cluster, all of {WT-spleen, WT-siiel, KO-spleen, "
+                        "KO-siiel}). Default: auto-detect.")
+    p.add_argument("--cohort-col", default=None,
+                   help="Which --metadata-cols column's value becomes the "
+                        "manifest 'cohort' label (the axis Taiji compares "
+                        "across). Default: first --metadata-cols entry.")
     p.add_argument("--target-cluster-size", type=int, default=200,
                    help="Target mean cluster size for resolution search. "
                         "Default: 200.")
@@ -440,6 +447,7 @@ def main(argv: list[str] | None = None) -> int:
         "--min-cluster-cells", str(args.min_cluster_cells),
         "--transferred-label-col", args.transferred_label_col,
         *( ["--metadata-cols", args.metadata_cols] if args.metadata_cols else [] ),
+        *( ["--cohort-col", args.cohort_col] if args.cohort_col else [] ),
         *( ["--yes"] if args.yes else [] ),
         *( ["--no-plot"] if args.no_plot else [] ),
     )

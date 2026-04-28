@@ -40,7 +40,8 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 | `--input`                   | Path to the single-cell object (.rds / .h5ad / .h5mu). Required.                      |
 | `--fragments`               | Path to `fragments.tsv.gz` (plus `.tbi`). Required if peaks are to be called.         |
 | `--genome`                  | hg38 / hg19 / mm10 / mm39. Drives Signac::CallPeaks `effective.genome.size` and downstream-Taiji metadata. |
-| `--metadata-cols`           | Comma-separated metadata columns to stratify on (e.g. `donor,condition`). Default: auto-detect categorical columns with 2-20 unique values, skipping cell-barcode-like columns. |
+| `--metadata-cols`           | Comma-separated metadata columns to stratify on (e.g. `genotype,tissue`). Multiple columns produce the FULL CROSS-PRODUCT within each cluster — for `genotype,tissue` you get per-cluster `(WT,spleen)`, `(WT,siiel)`, `(KO,spleen)`, `(KO,siiel)`. Default: auto-detect categorical columns with 2-20 unique values. |
+| `--cohort-col`              | Which `--metadata-cols` column's value becomes the manifest `cohort` label (the axis Taiji compares across). Default: the first `--metadata-cols` entry. |
 | `--output-dir`              | Where the `rna/`, `atac/`, `clusters.csv`, `manifest.tsv` land.                       |
 | `--target-cluster-size`     | Target mean cluster size for the resolution search. Default: `200` (range `[100, 300]`). |
 | `--min-cluster-cells`       | Drop clusters with fewer than this many cells. Default: `20`. Applied per modality for separate-assay, combined for multiome/multiome. |

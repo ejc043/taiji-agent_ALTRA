@@ -87,16 +87,21 @@ groups_plan <- fromJSON(opt$groups, simplifyDataFrame = FALSE)
 
 aggregate_one <- function(group_spec) {
   cl <- group_spec$cluster
-  col <- group_spec$metadata_col
-  val <- group_spec$metadata_value
-  if (is.null(col) || is.na(col) || col == "NA") {
-    cells <- clusters_df$barcode[clusters_df$seurat_cluster == cl]
-  } else {
-    sel <- clusters_df$seurat_cluster == cl &
-           !is.na(clusters_df[[col]]) &
-           as.character(clusters_df[[col]]) == as.character(val)
-    cells <- clusters_df$barcode[sel]
+  metadata <- group_spec$metadata   # named list/dict: {col: val, ...} or NULL
+  sel <- as.character(clusters_df$seurat_cluster) == as.character(cl)
+  if (!is.null(metadata) && length(metadata) > 0) {
+    for (col in names(metadata)) {
+      if (!(col %in% colnames(clusters_df))) {
+        warning("[aggregate_rna] group ", group_spec$name,
+                ": metadata col '", col, "' not in clusters.csv; skipping.")
+        return(NULL)
+      }
+      sel <- sel &
+             !is.na(clusters_df[[col]]) &
+             as.character(clusters_df[[col]]) == as.character(metadata[[col]])
+    }
   }
+  cells <- clusters_df$barcode[sel]
   cells <- intersect(cells, names(bc_to_col))
   if (length(cells) == 0) {
     warning("[aggregate_rna] group ", group_spec$name,

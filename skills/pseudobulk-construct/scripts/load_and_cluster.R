@@ -37,7 +37,9 @@ option_list <- list(
   make_option("--transferred-label-col", type = "character",
               default = "predicted.id"),
   make_option("--metadata-cols", type = "character", default = NULL,
-              help = "Comma-separated columns to stratify on."),
+              help = "Comma-separated columns to stratify on. Multiple columns produce the FULL CROSS-PRODUCT within each cluster (e.g. genotype,tissue -> per-cluster (WT,spleen) (WT,siiel) (KO,spleen) (KO,siiel))."),
+  make_option("--cohort-col", type = "character", default = NULL,
+              help = "Which metadata column's value becomes the manifest 'cohort' label. Default: first --metadata-cols entry."),
   make_option("--no-plot", action = "store_true", default = FALSE,
               help = "Skip the QC UMAP rendering step (default: write qc/umap.png)."),
   make_option("--yes", action = "store_true", default = FALSE)
@@ -362,58 +364,124 @@ for (cl in keep_clusters) {
 }
 
 # ------------------------------------------------------------------------
-# Groups plan: one entry per (cluster x metadata_col x metadata_value)
+# Groups plan: cross-product of (cluster x meta_col_1 x meta_col_2 x ...)
 # ------------------------------------------------------------------------
-# Additionally, emit per-(cluster x meta_col x meta_value) barcode files so
-# the MACS2 driver can call peaks at the finest granularity. If no metadata
-# cols were detected, fall back to per-cluster-only groups.
+# When the user supplies multiple --metadata-cols (e.g. genotype,tissue),
+# we want the FULL CROSS-PRODUCT within each cluster — not parallel
+# per-column groups. The cross-product is the correct stratification when
+# metadata axes interact (e.g. WT-spleen and WT-siiel have different
+# chromatin landscapes that pooling would smooth out). The per-axis
+# parallel pattern only makes sense for truly independent confounders,
+# which is rarely the case in single-cell biology.
+#
+# Group spec format (groups_plan.json):
+#   { name, cluster, metadata: {col1: val1, col2: val2, ...},
+#     n_cells, cohort, group }
+#
+# `cohort` is the value of the col named in --cohort-col (default: first
+# of --metadata-cols). It's the column-VALUE, not the column-NAME — that
+# was a bug in the parallel-per-col implementation and would have produced
+# wrong cohort labels in the build-taiji-input manifest.
 
 groups <- list()
 
-make_name <- function(cluster, col, val) {
-  safe <- function(s) gsub("[^A-Za-z0-9._-]+", "_", as.character(s))
-  if (is.na(col) || is.na(val)) {
-    return(sprintf("cluster%s", safe(cluster)))
-  }
-  sprintf("cluster%s__%s__%s", safe(cluster), safe(col), safe(val))
+# Resolve cohort axis: either explicit --cohort-col, or the first
+# --metadata-cols entry, or "all" if no metadata cols.
+cohort_col <- opt$`cohort-col`
+if (is.null(cohort_col) || cohort_col == "") {
+  cohort_col <- if (length(meta_cols) > 0) meta_cols[1] else NA_character_
+}
+if (!is.na(cohort_col) && !(cohort_col %in% meta_cols)) {
+  stop(sprintf(
+    "--cohort-col '%s' is not among --metadata-cols (%s).",
+    cohort_col, paste(meta_cols, collapse = ",")))
 }
 
-if (length(meta_cols) == 0) {
-  for (cl in keep_clusters) {
-    groups[[length(groups) + 1]] <- list(
-      name = make_name(cl, NA, NA),
-      cluster = cl,
-      metadata_col = NA,
-      metadata_value = NA,
-      n_cells = as.integer(sum(md_out$seurat_cluster == cl)),
-      cohort = "all",
-      group = paste0("cluster", cl)
-    )
+make_name <- function(cluster, metadata_pairs) {
+  safe <- function(s) gsub("[^A-Za-z0-9._-]+", "_", as.character(s))
+  if (length(metadata_pairs) == 0) {
+    return(sprintf("cluster%s", safe(cluster)))
   }
-} else {
-  for (cl in keep_clusters) {
-    sub <- md_out[md_out$seurat_cluster == cl, , drop = FALSE]
-    for (col in meta_cols) {
-      for (val in sort(unique(sub[[col]]))) {
-        n <- sum(sub[[col]] == val, na.rm = TRUE)
-        if (n < opt$`min-cluster-cells`) next  # apply floor here too
-        name <- make_name(cl, col, val)
-        # Write a per-group barcode list for the MACS2 driver.
-        bcs <- sub$barcode[which(sub[[col]] == val)]
-        writeLines(bcs,
-                   file.path(output_dir, "per_cluster_barcodes",
-                             sprintf("%s.txt", name)))
-        groups[[length(groups) + 1]] <- list(
-          name = name,
-          cluster = cl,
-          metadata_col = col,
-          metadata_value = as.character(val),
-          n_cells = as.integer(n),
-          cohort = col,
-          group = paste0("cluster", cl, "__", val)
-        )
-      }
+  parts <- mapply(
+    function(k, v) sprintf("%s-%s", safe(k), safe(v)),
+    names(metadata_pairs), metadata_pairs, USE.NAMES = FALSE
+  )
+  sprintf("cluster%s__%s", safe(cluster), paste(parts, collapse = "__"))
+}
+
+# Build the (col -> sorted unique non-NA values) lookup once. We use this
+# as input to expand.grid for the cross-product.
+meta_value_lookup <- function(sub, cols) {
+  out <- lapply(cols, function(col) {
+    v <- unique(sub[[col]])
+    sort(as.character(v[!is.na(v)]))
+  })
+  names(out) <- cols
+  out
+}
+
+for (cl in keep_clusters) {
+  sub <- md_out[md_out$seurat_cluster == cl, , drop = FALSE]
+
+  if (length(meta_cols) == 0) {
+    # No metadata stratification: one group per cluster.
+    name <- make_name(cl, list())
+    bcs <- sub$barcode
+    writeLines(bcs,
+               file.path(output_dir, "per_cluster_barcodes",
+                         sprintf("%s.txt", name)))
+    groups[[length(groups) + 1]] <- list(
+      name = name, cluster = cl,
+      metadata = NULL,
+      n_cells = as.integer(nrow(sub)),
+      cohort = "all", group = name
+    )
+    next
+  }
+
+  # Cross-product of all metadata cols' unique values within this cluster.
+  vals <- meta_value_lookup(sub, meta_cols)
+  if (any(sapply(vals, length) == 0)) {
+    message("[load_and_cluster] cluster ", cl,
+            ": one of the metadata cols has no non-NA values; skipping.")
+    next
+  }
+  grid <- do.call(expand.grid,
+                  c(vals, list(stringsAsFactors = FALSE)))
+
+  for (i in seq_len(nrow(grid))) {
+    combo <- as.list(grid[i, , drop = FALSE])
+    # Ensure values are character (expand.grid sometimes coerces).
+    combo <- lapply(combo, as.character)
+    # Filter the per-cluster sub to rows matching every combo constraint.
+    matching <- rep(TRUE, nrow(sub))
+    for (col in names(combo)) {
+      matching <- matching &
+                  !is.na(sub[[col]]) &
+                  as.character(sub[[col]]) == combo[[col]]
     }
+    n <- sum(matching, na.rm = TRUE)
+    if (n < opt$`min-cluster-cells`) next  # per-group floor
+
+    name <- make_name(cl, combo)
+    bcs <- sub$barcode[matching]
+    writeLines(bcs,
+               file.path(output_dir, "per_cluster_barcodes",
+                         sprintf("%s.txt", name)))
+
+    cohort_label <- if (!is.na(cohort_col)) {
+      as.character(combo[[cohort_col]])
+    } else {
+      "all"
+    }
+
+    groups[[length(groups) + 1]] <- list(
+      name = name, cluster = cl,
+      metadata = combo,
+      n_cells = as.integer(n),
+      cohort = cohort_label,
+      group = name
+    )
   }
 }
 
@@ -424,6 +492,7 @@ writeLines(
     kept_clusters = keep_clusters,
     dropped_clusters = dropped_clusters,
     metadata_cols = meta_cols,
+    cohort_col = if (is.na(cohort_col)) NULL else cohort_col,
     min_cluster_cells = opt$`min-cluster-cells`,
     groups = groups
   ), pretty = TRUE, auto_unbox = TRUE),

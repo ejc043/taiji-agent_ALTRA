@@ -260,18 +260,26 @@ call_peaks_one <- function(g, obj, clusters_df, atac_assay, frag_bcs,
     return(out_peak)
   }
 
-  # Resolve the cell set for this group from clusters.csv.
+  # Resolve the cell set for this group from clusters.csv. Group spec
+  # carries metadata as a named list/dict {col: val, ...} (or NULL when
+  # no metadata stratification was requested); compose the filter from
+  # all key-value pairs.
   cl <- as.character(g$cluster)
-  col <- g$metadata_col
-  val <- g$metadata_value
-  if (is.null(col) || is.na(col) || identical(col, "NA")) {
-    cells <- clusters_df$barcode[as.character(clusters_df$seurat_cluster) == cl]
-  } else {
-    sel <- as.character(clusters_df$seurat_cluster) == cl &
-           !is.na(clusters_df[[col]]) &
-           as.character(clusters_df[[col]]) == as.character(val)
-    cells <- clusters_df$barcode[sel]
+  metadata <- g$metadata
+  sel <- as.character(clusters_df$seurat_cluster) == cl
+  if (!is.null(metadata) && length(metadata) > 0) {
+    for (mcol in names(metadata)) {
+      if (!(mcol %in% colnames(clusters_df))) {
+        warning("[call_peaks] group ", g$name,
+                ": metadata col '", mcol, "' not in clusters.csv; skipping.")
+        return(NULL)
+      }
+      sel <- sel &
+             !is.na(clusters_df[[mcol]]) &
+             as.character(clusters_df[[mcol]]) == as.character(metadata[[mcol]])
+    }
   }
+  cells <- clusters_df$barcode[sel]
 
   # Restrict to ATAC-side cells in a co-embedded object, when an `assay`
   # meta.data flag exists. Otherwise use cells present in the ATAC assay.

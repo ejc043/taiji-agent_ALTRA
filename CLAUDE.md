@@ -82,7 +82,7 @@ Six production skills, all chainable end-to-end. The `taiji/` directory is reser
 - `--fragments` path to `fragments.tsv.gz` (required for ATAC peak calling).
 - `--genome` tag.
 - `--output-dir`.
-- Optional: `--metadata-cols`, `--target-cluster-size` (default 200, band [100, 300]), `--min-cluster-cells` (default 20), `--clustering-signal` (`wnn`/`rna`/`atac`; auto-selected from `sc_modality`), `--transferred-label-col` (default `predicted.id`), `--peak-caller` (`macs2`/`macs3`), `--rna-only`/`--atac-only`, `--dry-run`, `--yes`.
+- Optional: `--metadata-cols` (cross-product within each cluster — e.g. `genotype,tissue` → per-cluster `(WT,spleen)`, `(WT,siiel)`, `(KO,spleen)`, `(KO,siiel)` quads), `--cohort-col` (which metadata col's value becomes the manifest cohort label; default: first of `--metadata-cols`), `--target-cluster-size` (default 200, band [100, 300]), `--min-cluster-cells` (default 20), `--clustering-signal` (`wnn`/`rna`/`atac`; auto-selected from `sc_modality`), `--transferred-label-col` (default `predicted.id`), `--peak-caller` (`macs2`/`macs3`), `--rna-only`/`--atac-only`, `--dry-run`, `--yes`.
 
 **Pipeline (orchestrated by `pseudobulk.py`):**
 1. `detect-dataset-type` gate — refuses bulk; for sc-undetermined refuses with Signac integrate_atac pointer; for separate-assay routes to ATAC-LSI clustering with required transferred-label check.
