@@ -120,6 +120,29 @@ def main(argv: list[str] | None = None) -> int:
             print(f"ERROR: {label} '{path}' does not exist", file=sys.stderr)
             return 2
 
+    # Convention nudge: outputs should live under runs/<name>/, not inside
+    # the input data dir. Putting derived artifacts beside immutable inputs
+    # makes cleanup hard, breaks per-run reproducibility, and risks future
+    # detect-dataset-type runs reclassifying the directory because of the
+    # coembed.rds sitting next to the originals.
+    try:
+        rna_parent  = args.rna.resolve().parent
+        atac_parent = args.atac.resolve().parent
+        out_parent  = args.output.resolve().parent
+        if (out_parent == rna_parent or out_parent == atac_parent
+            or rna_parent in out_parent.parents
+            or atac_parent in out_parent.parents):
+            print(
+                f"WARN: --output ({args.output}) is inside an input data "
+                f"directory ({rna_parent} / {atac_parent}). Convention is "
+                f"to write coembed outputs under runs/<run_name>/coembed/ "
+                f"so derived artifacts stay separate from canonical inputs. "
+                f"Continuing anyway.",
+                file=sys.stderr,
+            )
+    except (OSError, ValueError):
+        pass  # symlink resolution can fail; convention check is advisory
+
     # Output dir setup.
     args.output.parent.mkdir(parents=True, exist_ok=True)
 

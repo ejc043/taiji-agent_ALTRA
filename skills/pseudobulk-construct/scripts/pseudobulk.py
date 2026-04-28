@@ -380,8 +380,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Non-interactive: accept auto-detected metadata columns "
                         "without prompting.")
     p.add_argument("--dry-run", action="store_true",
-                   help="Plan only: run resolution search, write clusters.csv "
-                        "and manifest, skip RNA aggregation and MACS2 calls.")
+                   help="Plan only: validate inputs and print the resolved "
+                        "plan (no R/MACS invocations). Useful for checking "
+                        "the wiring before submitting a long SLURM job.")
     p.add_argument("--no-plot", action="store_true",
                    help="Skip the QC UMAP rendering in load_and_cluster.R "
                         "(default: write qc/umap.png with panels for clusters, "
@@ -403,35 +404,81 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    # 1. detect-dataset-type gate FIRST — it's cheap (extension scan only) and
-    #    a bulk-input user shouldn't have to install R+MACS2 just to hear
-    #    "you're on the wrong skill."
+    # 1. detect-dataset-type gate. Two reasons this is conditional now:
+    #    - --skip-data-type-check: explicit user opt-out (preserved).
+    #    - --use-existing-clusters: the user is asserting the input is a
+    #      pre-clustered SC object (e.g. coembed-construct's output). The
+    #      gate's modality auto-routing is moot in that case, and the gate
+    #      can produce confusing reclassifications when the coembed.rds
+    #      lives next to the original RNA + ATAC .rds files (it'd see
+    #      "separate-assay" again and try to re-pick a clustering signal).
+    #      We still want to refuse hard on bulk inputs, so do a single-file
+    #      classification rather than scanning the whole parent directory.
     if args.skip_data_type_check:
         gate = {"classification": "skipped", "sc_modality": None}
+    elif args.use_existing_clusters:
+        # Lightweight gate: just confirm the input file extension is one
+        # of the SC formats. Don't scan the parent dir.
+        ext = args.input.suffix.lower()
+        if ext in (".rds", ".h5ad", ".h5mu"):
+            gate = {"classification": "single-cell",
+                    "sc_modality": "pre-coembedded"}
+        else:
+            print(f"ERROR: --use-existing-clusters requires an SC object "
+                  f"(.rds / .h5ad / .h5mu); got '{ext}'.", file=sys.stderr)
+            return 2
     else:
         gate = gate_on_detect(args.input, args.fragments)
 
-    signal = pick_clustering_signal(args.clustering_signal, gate.get("sc_modality"))
+    # Pick the clustering signal. With --use-existing-clusters the R script
+    # ignores the signal value (it short-circuits to "use the existing
+    # seurat_clusters"), so we just pick a benign default to satisfy the
+    # CLI contract.
+    if args.use_existing_clusters:
+        signal = args.clustering_signal or "rna"
+    else:
+        signal = pick_clustering_signal(args.clustering_signal,
+                                        gate.get("sc_modality"))
 
     # 2. Resolve peak caller (auto-detect macs3 then macs2 unless user gave
-    #    an explicit --peak-caller) and check Rscript + the chosen caller
-    #    are on PATH. In --dry-run we degrade gracefully: if R is missing we
-    #    can still validate the gate and print what would run. Without
-    #    --dry-run, missing binaries are a hard error.
+    #    an explicit --peak-caller). This is cheap and useful to print even
+    #    in --dry-run.
     resolved_peak_caller = resolve_peak_caller(args.peak_caller)
     if resolved_peak_caller and not args.peak_caller:
         print(f"[pseudobulk] auto-selected peak caller: {resolved_peak_caller}",
               file=sys.stderr)
     args.peak_caller = resolved_peak_caller or args.peak_caller or "macs3"
+
+    # 3. --dry-run short-circuit. Print the resolved plan and exit cleanly
+    #    WITHOUT invoking any R script. Real planning, not "we tried to run
+    #    and it crashed."
+    if args.dry_run:
+        print("\n=== pseudobulk-construct --dry-run plan ===", file=sys.stderr)
+        print(f"  input               : {args.input}", file=sys.stderr)
+        print(f"  fragments           : {args.fragments}", file=sys.stderr)
+        print(f"  output_dir          : {args.output_dir}", file=sys.stderr)
+        print(f"  genome              : {args.genome}", file=sys.stderr)
+        print(f"  gate classification : {gate.get('classification')}",
+              file=sys.stderr)
+        print(f"  gate sc_modality    : {gate.get('sc_modality')}",
+              file=sys.stderr)
+        print(f"  clustering signal   : {signal}", file=sys.stderr)
+        print(f"  use-existing-clusters: {args.use_existing_clusters}",
+              file=sys.stderr)
+        print(f"  metadata cols       : {args.metadata_cols or '(auto-detect)'}",
+              file=sys.stderr)
+        print(f"  cohort col          : {args.cohort_col or '(first metadata col)'}",
+              file=sys.stderr)
+        print(f"  peak caller         : {args.peak_caller}", file=sys.stderr)
+        print(f"  rna-only / atac-only: {args.rna_only} / {args.atac_only}",
+              file=sys.stderr)
+        print("[pseudobulk] --dry-run: skipping all R + MACS invocations.",
+              file=sys.stderr)
+        return 0
+
+    # 4. Dependency check (real run only — dry-run already returned).
     dep = check_dependencies(resolved_peak_caller)
     if not dep.ok:
-        if args.dry_run:
-            print(
-                f"NOTE (--dry-run): {dep.missing} not on PATH. Gate passed; "
-                "skipping clustering, RNA aggregation, and peak calls.",
-                file=sys.stderr,
-            )
-            return 0
         print(
             "ERROR: required binaries missing from PATH: "
             f"{dep.missing}. On SLURM, try `module load r/4.3 "
@@ -475,7 +522,7 @@ def main(argv: list[str] | None = None) -> int:
     groups: list[dict] = plan["groups"]
 
     # 5. RNA aggregation (R-side): writes rna/<name>.tsv per group.
-    if not args.atac_only and not args.dry_run:
+    if not args.atac_only:
         run_rscript(
             R_AGGREGATE_RNA,
             "--input", str(args.input),
@@ -490,11 +537,7 @@ def main(argv: list[str] | None = None) -> int:
     #    handles all groups; per-group barcode reconciliation against the
     #    fragments file (suffix-stripping), Fragment-object plumbing, and
     #    narrowPeak emission all happen there.
-    if (
-        not args.rna_only
-        and not args.dry_run
-        and args.fragments is not None
-    ):
+    if not args.rna_only and args.fragments is not None:
         atac_dir = args.output_dir / "atac"
         atac_dir.mkdir(exist_ok=True)
         macs_path = shutil.which(args.peak_caller)

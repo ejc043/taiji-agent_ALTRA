@@ -52,7 +52,27 @@ output_dir/
     └── umap_coords.csv    # 2D embedding coords + cluster + assay (re-plotting outside R)
 ```
 
-The output `coembed.rds` is the input to `pseudobulk-construct --input coembed.rds --use-existing-clusters` (since clustering already happened here).
+### Where to put `--output` (convention)
+
+**Always under `runs/<run_name>/coembed/coembed.rds`, not inside the input data directory.** The skill emits a `WARN` on stderr if it detects the output going under the RNA/ATAC parent dir. Reasons:
+
+- Cleanup is `rm -rf runs/<run_name>/`. With outputs in `data/<dataset>/coembed/`, you'd have to manually scrub.
+- Re-runs with different parameters (resolution, metadata cols) need separate output dirs. Pinning to a run dir gives you that automatically.
+- A coembed.rds dropped into the input data dir confuses the next `detect-dataset-type` scan — the gate sees the original two `.rds` plus the coembed and may produce ambiguous classifications. Keeping the input dir immutable avoids this entirely.
+
+```bash
+# Right:
+python skills/coembed-construct/scripts/coembed.py \
+  --rna  data/<dataset>/rna.rds \
+  --atac data/<dataset>/atac.rds \
+  --output runs/<run_name>/coembed/coembed.rds \
+  --genome mm10
+
+# Wrong (skill warns):
+  --output data/<dataset>/coembed/coembed.rds   # <- inside input dir
+```
+
+The output `coembed.rds` is the input to `pseudobulk-construct --input <path>/coembed.rds --use-existing-clusters` (since clustering already happened here).
 
 ## Pre-flight checks the skill enforces
 

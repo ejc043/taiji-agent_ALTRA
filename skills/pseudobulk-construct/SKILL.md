@@ -50,8 +50,9 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 | `--peak-caller`             | `macs2` or `macs3`. Auto-detected from PATH (prefers macs3); pseudobulk.py resolves the full binary path and passes it to Signac::CallPeaks via `macs2.path`. |
 | `--skip-data-type-check`    | Bypass the detect-dataset-type pre-flight (use only if you know the input is SC).     |
 | `--rna-only` / `--atac-only`| Restrict output to a single modality (useful for RNA-only scRNA objects).             |
-| `--dry-run`                 | Plan the resolution search and list planned outputs without invoking peak calling.    |
+| `--dry-run`                 | Print the resolved plan (input, signal, gate, cohort col, peak caller, etc.) and exit cleanly. **No R or MACS invocations** — safe to run before submitting a long SLURM job to validate wiring. |
 | `--no-plot`                 | Skip the QC UMAP rendering. Default: write `qc/umap.png` (panels for clusters, `assay` if co-embedded, each metadata col) plus `qc/umap_coords.csv`. |
+| `--use-existing-clusters`   | Skip clustering. Required when the input is a `coembed-construct` output (or any pre-clustered SC object): the skill reads `seurat_clusters` from the input's meta.data and the existing UMAP reduction. Also bypasses the modality-routing branch of the detect gate, so the gate's reclassification of a coembed.rds-next-to-original-rds dir doesn't matter. |
 
 ## Dependencies the skill expects in the execution environment
 
