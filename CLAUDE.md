@@ -102,6 +102,8 @@ output_dir/
 ├── rna/<name>.tsv                  GeneQuant TSV per group
 ├── atac/<name>.narrowPeak          per-cluster Signac::CallPeaks peaks (ENCODE 10-col)
 ├── atac/<name>_peaks.rds           per-cluster Signac peak GRanges (saveRDS)
+├── qc/umap.png                     QC UMAP panels (clusters / assay / metadata cols); skipped via --no-plot
+├── qc/umap_coords.csv              2D embedding + cluster labels for re-plotting outside R
 └── manifest.tsv                    feeds build-taiji-input directly
 ```
 

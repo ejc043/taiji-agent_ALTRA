@@ -19,6 +19,9 @@ output_dir/
 │   └── ...
 ├── clusters.csv                 # per-cell: barcode, seurat_cluster, metadata cols
 ├── resolution_trace.json        # the resolution-search history (for audit)
+├── qc/
+│   ├── umap.png                 # combined UMAP panels: clusters, assay (if co-embedded), each metadata col
+│   └── umap_coords.csv          # 2D embedding coords + cluster labels (for re-plotting in Python/etc.)
 └── manifest.tsv                 # samples sheet ready for build-taiji-input
 ```
 
@@ -47,6 +50,7 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 | `--skip-data-type-check`    | Bypass the detect-dataset-type pre-flight (use only if you know the input is SC).     |
 | `--rna-only` / `--atac-only`| Restrict output to a single modality (useful for RNA-only scRNA objects).             |
 | `--dry-run`                 | Plan the resolution search and list planned outputs without invoking peak calling.    |
+| `--no-plot`                 | Skip the QC UMAP rendering. Default: write `qc/umap.png` (panels for clusters, `assay` if co-embedded, each metadata col) plus `qc/umap_coords.csv`. |
 
 ## Dependencies the skill expects in the execution environment
 

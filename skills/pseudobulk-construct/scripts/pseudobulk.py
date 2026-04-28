@@ -375,6 +375,10 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dry-run", action="store_true",
                    help="Plan only: run resolution search, write clusters.csv "
                         "and manifest, skip RNA aggregation and MACS2 calls.")
+    p.add_argument("--no-plot", action="store_true",
+                   help="Skip the QC UMAP rendering in load_and_cluster.R "
+                        "(default: write qc/umap.png with panels for clusters, "
+                        "assay [if present], and detected metadata cols).")
     args = p.parse_args(argv)
 
     if args.rna_only and args.atac_only:
@@ -437,6 +441,7 @@ def main(argv: list[str] | None = None) -> int:
         "--transferred-label-col", args.transferred_label_col,
         *( ["--metadata-cols", args.metadata_cols] if args.metadata_cols else [] ),
         *( ["--yes"] if args.yes else [] ),
+        *( ["--no-plot"] if args.no_plot else [] ),
     )
 
     # 4. Read the per-group plan the R script wrote.

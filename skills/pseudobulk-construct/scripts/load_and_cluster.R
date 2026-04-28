@@ -38,6 +38,8 @@ option_list <- list(
               default = "predicted.id"),
   make_option("--metadata-cols", type = "character", default = NULL,
               help = "Comma-separated columns to stratify on."),
+  make_option("--no-plot", action = "store_true", default = FALSE,
+              help = "Skip the QC UMAP rendering step (default: write qc/umap.png)."),
   make_option("--yes", action = "store_true", default = FALSE)
 )
 opt <- parse_args(OptionParser(option_list = option_list))
@@ -431,3 +433,109 @@ writeLines(
 message("[load_and_cluster] done. ",
         length(keep_clusters), " clusters kept, ",
         length(groups), " pseudobulk groups planned.")
+
+# ------------------------------------------------------------------------
+# QC UMAP — colored panels for clusters / assay / metadata
+# ------------------------------------------------------------------------
+# Generated unconditionally (default ON) once clustering has converged.
+# The reduction is computed against the same neighbor graph used for
+# clustering, so the UMAP visually reflects the partitions.
+#
+# Panels rendered:
+#   - seurat_clusters (always)
+#   - assay           (if a meta.data column 'assay' exists — the
+#                      integrate_atac convention for co-embedded objects)
+#   - each detected `--metadata-cols` value
+#
+# Cheap to compute (a few seconds for ≤100k cells); easy to skip via
+# --no-plot if the user is iterating on a CI box without a graphics stack.
+# Degrades gracefully when ggplot2 / patchwork aren't installed.
+
+if (!opt$`no-plot`) {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    message("[load_and_cluster] ggplot2 not available; skipping QC UMAP.")
+  } else {
+    qc_dir <- file.path(output_dir, "qc")
+    dir.create(qc_dir, recursive = TRUE, showWarnings = FALSE)
+
+    # Compute UMAP using the same reduction we clustered on.
+    obj_for_plot <- tryCatch({
+      if (opt$signal == "wnn") {
+        RunUMAP(obj, nn.name = "weighted.nn",
+                reduction.name = "umap.wnn", verbose = FALSE)
+      } else if (opt$signal == "rna") {
+        RunUMAP(obj, reduction = "pca", dims = 1:30, verbose = FALSE)
+      } else if (opt$signal == "atac") {
+        lsi_red <- grep("lsi|svd", names(obj@reductions),
+                        ignore.case = TRUE, value = TRUE)[1]
+        RunUMAP(obj, reduction = lsi_red, dims = 2:30,
+                reduction.name = "umap.atac", verbose = FALSE)
+      } else NULL
+    }, error = function(e) {
+      message("[load_and_cluster] UMAP failed (", conditionMessage(e),
+              "); skipping QC plot.")
+      NULL
+    })
+
+    if (!is.null(obj_for_plot)) {
+      reduction_name <- switch(opt$signal,
+                               wnn  = "umap.wnn",
+                               atac = "umap.atac",
+                               "umap")
+
+      # Save the UMAP coords as CSV so downstream tools can re-render
+      # without R (matplotlib, plotly, etc.). Cheap, ~few MB max.
+      umap_emb <- Embeddings(obj_for_plot, reduction = reduction_name)
+      umap_df <- data.frame(
+        barcode = rownames(umap_emb),
+        umap_1  = umap_emb[, 1],
+        umap_2  = umap_emb[, 2],
+        seurat_cluster = as.character(Idents(obj_for_plot)),
+        stringsAsFactors = FALSE
+      )
+      write.csv(umap_df, file.path(qc_dir, "umap_coords.csv"), row.names = FALSE)
+
+      # Pick group-by columns: clusters (always) + assay (if present)
+      # + each user-chosen metadata col (only those that exist).
+      groupby_cols <- c("seurat_clusters")
+      if ("assay" %in% colnames(obj_for_plot@meta.data)) {
+        groupby_cols <- c(groupby_cols, "assay")
+      }
+      groupby_cols <- c(groupby_cols,
+                        intersect(meta_cols, colnames(obj_for_plot@meta.data)))
+      groupby_cols <- unique(groupby_cols)
+
+      panels <- list()
+      for (col in groupby_cols) {
+        p <- tryCatch(
+          DimPlot(obj_for_plot, reduction = reduction_name, group.by = col,
+                  label = (col == "seurat_clusters"), repel = TRUE) +
+            ggplot2::ggtitle(col),
+          error = function(e) {
+            message("[load_and_cluster] DimPlot[", col, "] failed: ",
+                    conditionMessage(e))
+            NULL
+          }
+        )
+        if (!is.null(p)) panels[[length(panels) + 1]] <- p
+      }
+
+      if (length(panels) > 0) {
+        out_png <- file.path(qc_dir, "umap.png")
+        if (requireNamespace("patchwork", quietly = TRUE) &&
+            length(panels) > 1) {
+          ncol_plot <- min(2, length(panels))
+          n_rows <- ceiling(length(panels) / ncol_plot)
+          combined <- patchwork::wrap_plots(panels, ncol = ncol_plot)
+          ggplot2::ggsave(out_png, plot = combined,
+                          width = 6 * ncol_plot, height = 5 * n_rows,
+                          dpi = 100, bg = "white")
+        } else {
+          ggplot2::ggsave(out_png, plot = panels[[1]],
+                          width = 7, height = 5, dpi = 100, bg = "white")
+        }
+        message("[load_and_cluster] QC UMAP -> ", out_png)
+      }
+    }
+  }
+}
