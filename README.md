@@ -72,7 +72,10 @@ python skills/fetch-references/scripts/fetch.py \
 Downloads to `dependencies_data/hg38/`:
 - `genome.fa` (GENCODE primary assembly, ~3 GB uncompressed)
 - `genes.gtf` (GENCODE v45)
-- `HOCOMOCOv11_human.meme` (TF binding motifs)
+- `cisBP_human.meme` (TF binding motifs — copied from the in-repo `cisbp_database/`; no external download)
+- `motifs.meme` symlink → the chosen motif file (Taiji templates reference this stable path)
+
+Motif source defaults to **CIS-BP** (vendored at `cisbp_database/`, TF gene symbols as primary IDs, no network). Pass `--motif-source hocomoco` to download HOCOMOCO v11 from autosome.org instead.
 
 Idempotent — files within ±5% of expected size are skipped. Pass `--check` to verify without downloading. Pass `--force` to re-fetch.
 

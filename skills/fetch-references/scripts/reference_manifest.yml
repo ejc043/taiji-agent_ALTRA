@@ -4,13 +4,16 @@
 # For each genome:
 #   - fasta:           primary-assembly genome FASTA (gunzipped on disk)
 #   - gtf:             GENCODE annotation (gunzipped on disk)
-#   - motif_cisbp:     CIS-BP v2.00 MEME motif file (DEFAULT). Extracted
-#                      from the MEME Suite motif-database tarball. CIS-BP
-#                      aggregates JASPAR + TRANSFAC + ENCODE + SELEX-seq +
-#                      PBMs and re-keys all motifs by TF gene symbol — so
-#                      Taiji's GeneRanks output stays gene-name interpretable.
+#   - motif_cisbp:     CIS-BP MEME motif file (DEFAULT). VENDORED in this
+#                      repo at cisbp_database/cisBP_{human,mouse}.meme so
+#                      no external download is needed. CIS-BP aggregates
+#                      JASPAR + TRANSFAC + ENCODE + SELEX-seq + PBMs and
+#                      keys motifs by TF gene symbol as the primary ID
+#                      (e.g. `MOTIF POU3F2+M5734_1.02+D`) — so Taiji's
+#                      GeneRanks output is gene-name interpretable.
 #   - motif_hocomoco:  HOCOMOCO v11 MEME motif file (alternative, opt-in
-#                      via --motif-source hocomoco). Single source, slightly
+#                      via --motif-source hocomoco). Downloaded from
+#                      autosome.org at fetch time. Single source, slightly
 #                      narrower TF coverage but immutable URL.
 #   - build_fai (optional flag on fasta): run samtools faidx after download
 #
@@ -18,14 +21,13 @@
 # and creates a stable <genome>/motifs.meme symlink that Taiji templates
 # reference, so switching motif sources doesn't require template edits.
 #
-# All URLs are from stable, long-lived hosts:
+# Sources:
 #   - GENCODE FASTA + GTF via EMBL-EBI mirror (release-versioned, immutable)
-#   - CIS-BP via MEME Suite's motif-database tarball (versioned, ~30 MB)
+#   - CIS-BP MEME files vendored under cisbp_database/ (no network)
 #   - HOCOMOCO v11 from autosome.org (the canonical host since 2018)
 #
-# Tarball entries declare `extract_from_tar` (path inside the .tgz) and the
-# downloader caches the tarball under <output_dir>/_cache/ so fetching
-# multiple genomes only downloads it once.
+# Vendored entries declare `vendored_path` (relative to repo root) and are
+# copied into <output_dir>/<genome>/<target> at fetch time — no network.
 #
 # Targets are written under <output_dir>/<genome>/<file>.
 
@@ -44,11 +46,10 @@ hg38:
       gunzip: true
       approx_size_mb: 1500
     motif_cisbp:
-      url:    https://meme-suite.org/meme/meme-software/Databases/motifs/motif_databases.12.26.tgz
+      vendored_path: cisbp_database/cisBP_human.meme
       target: hg38/cisBP_human.meme
-      extract_from_tar: motif_databases/CIS-BP_2.00/Homo_sapiens.meme
       gunzip: false
-      approx_size_mb: 5
+      approx_size_mb: 1.4
     motif_hocomoco:
       url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/HUMAN/mono/HOCOMOCOv11_full_HUMAN_mono_meme_format.meme
       target: hg38/HOCOMOCOv11_human.meme
@@ -70,11 +71,10 @@ hg19:
       gunzip: true
       approx_size_mb: 1300
     motif_cisbp:
-      url:    https://meme-suite.org/meme/meme-software/Databases/motifs/motif_databases.12.26.tgz
+      vendored_path: cisbp_database/cisBP_human.meme
       target: hg19/cisBP_human.meme
-      extract_from_tar: motif_databases/CIS-BP_2.00/Homo_sapiens.meme
       gunzip: false
-      approx_size_mb: 5
+      approx_size_mb: 1.4
     motif_hocomoco:
       url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/HUMAN/mono/HOCOMOCOv11_full_HUMAN_mono_meme_format.meme
       target: hg19/HOCOMOCOv11_human.meme
@@ -96,11 +96,10 @@ mm10:
       gunzip: true
       approx_size_mb: 900
     motif_cisbp:
-      url:    https://meme-suite.org/meme/meme-software/Databases/motifs/motif_databases.12.26.tgz
+      vendored_path: cisbp_database/cisBP_mouse.meme
       target: mm10/cisBP_mouse.meme
-      extract_from_tar: motif_databases/CIS-BP_2.00/Mus_musculus.meme
       gunzip: false
-      approx_size_mb: 5
+      approx_size_mb: 0.7
     motif_hocomoco:
       url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/MOUSE/mono/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme
       target: mm10/HOCOMOCOv11_mouse.meme
@@ -122,11 +121,10 @@ mm39:
       gunzip: true
       approx_size_mb: 1000
     motif_cisbp:
-      url:    https://meme-suite.org/meme/meme-software/Databases/motifs/motif_databases.12.26.tgz
+      vendored_path: cisbp_database/cisBP_mouse.meme
       target: mm39/cisBP_mouse.meme
-      extract_from_tar: motif_databases/CIS-BP_2.00/Mus_musculus.meme
       gunzip: false
-      approx_size_mb: 5
+      approx_size_mb: 0.7
     motif_hocomoco:
       url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/MOUSE/mono/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme
       target: mm39/HOCOMOCOv11_mouse.meme

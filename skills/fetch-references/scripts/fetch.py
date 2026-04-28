@@ -348,6 +348,31 @@ def _extract_from_tar(tar_path: Path, member_path: str, dest: Path,
     return dest.stat().st_size
 
 
+def _copy_vendored(vendored_path: Path, dest: Path,
+                   log_prefix: str = "") -> int:
+    """Copy a repo-vendored file (e.g. cisbp_database/cisBP_human.meme) to
+    `dest`. Atomic via .part rename. Returns bytes written.
+    """
+    if not vendored_path.exists():
+        raise RuntimeError(
+            f"vendored file missing: {vendored_path}. "
+            "Was the repo cloned with this directory? Check `git status`."
+        )
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    print(f"{log_prefix}copying vendored {vendored_path}", file=sys.stderr)
+    shutil.copyfile(vendored_path, tmp)
+    tmp.rename(dest)
+    return dest.stat().st_size
+
+
+def _repo_root() -> Path:
+    """Resolve repo root from this script's location:
+    skills/fetch-references/scripts/fetch.py -> repo root is 3 parents up.
+    """
+    return Path(__file__).resolve().parent.parent.parent.parent
+
+
 def _fetch_to_cache(url: str, cache_path: Path, log_prefix: str = "") -> Path:
     """Download `url` to `cache_path` if not already there. No expected-size
     check — caller's manifest entry vouches for it."""
@@ -401,7 +426,11 @@ def _process_file(kind: str, spec: dict, output_dir: Path, *,
     target = output_dir / spec["target"]
     expected_mb = spec.get("approx_size_mb")
     gunzip = bool(spec.get("gunzip", False))
-    url = spec["url"]
+    vendored_rel = spec.get("vendored_path")
+    url = spec.get("url")
+    if not vendored_rel and not url:
+        raise SystemExit(
+            f"manifest entry '{kind}' has neither `vendored_path` nor `url`")
 
     # Check if already present and the right size.
     if target.exists() and not force:
@@ -423,15 +452,22 @@ def _process_file(kind: str, spec: dict, output_dir: Path, *,
                           error="not present (use without --check to download)")
 
     if dry_run:
+        plan = (f"would copy vendored {vendored_rel}"
+                if vendored_rel else f"would download {url}")
         return FileResult(kind=kind, target=target,
-                          status="dry-run", bytes_on_disk=0,
-                          error=f"would download {url}")
+                          status="dry-run", bytes_on_disk=0, error=plan)
 
-    # Tarball-extraction path: download URL once into <output>/_cache/, then
-    # extract just the named member into the target.
+    # Three fetch paths in priority order:
+    #   1. vendored: copy from repo-tracked file (no network)
+    #   2. tarball:  download tarball once into _cache/, extract one member
+    #   3. direct:   wget|curl|urllib download to target
     extract_path = spec.get("extract_from_tar")
     try:
-        if extract_path:
+        if vendored_rel:
+            src = (_repo_root() / vendored_rel).resolve()
+            bytes_written = _copy_vendored(src, target,
+                                           log_prefix=f"  [{kind}] ")
+        elif extract_path:
             cache_dir = output_dir / "_cache"
             cache_path = cache_dir / Path(url).name
             _fetch_to_cache(url, cache_path, log_prefix=f"  [{kind}] ")
@@ -570,10 +606,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "with the resolved fasta/gtf paths.")
     p.add_argument("--motif-source", choices=list(MOTIF_SOURCES),
                    default=DEFAULT_MOTIF_SOURCE,
-                   help=f"Which motif database to fetch. Default: "
-                        f"{DEFAULT_MOTIF_SOURCE} (CIS-BP 2.00 — JASPAR + "
-                        "TRANSFAC + ENCODE + SELEX-seq aggregated, keyed by "
-                        "TF gene symbol). Alternative: hocomoco (HOCOMOCO v11).")
+                   help=f"Which motif database to use. Default: "
+                        f"{DEFAULT_MOTIF_SOURCE} (CIS-BP — vendored at "
+                        "cisbp_database/, TF-gene-symbol primary IDs, no "
+                        "download). Alternative: hocomoco (HOCOMOCO v11, "
+                        "downloaded from autosome.org at fetch time).")
     p.add_argument("--json", action="store_true",
                    help="Print machine-readable JSON report instead of text.")
     return p.parse_args(argv)
