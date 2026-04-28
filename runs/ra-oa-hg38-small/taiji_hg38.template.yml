@@ -5,7 +5,7 @@ output_dir: "[insert_output_directory_here]"
 genome: "[insert_genome_filepath_here]"
 
 annotation: "/stg3/data1/eunice/Projects/taiji_agent/small_test/taiji-agent/dependencies_data/hg38/genes.gtf"
-motif_file: "/stg3/data1/eunice/Projects/taiji_agent/small_test/taiji-agent/dependencies_data/hg38/HOCOMOCOv11_human.meme"
+motif_file: "/stg3/data1/eunice/Projects/taiji_agent/small_test/taiji-agent/dependencies_data/hg38/motifs.meme"
 
 tmp_dir: "/stg3/data1/eunice/Projects/taiji_agent/small_test/taiji-agent/tmp"
 

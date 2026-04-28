@@ -30,7 +30,7 @@ tmp_dir: ${REPO_ROOT}/tmp/RA_OA_chr22_demo
 
 # --- Single-value reference data (shared across samples) ------------------
 annotation: ${REPO_ROOT}/dependencies_data/hg38/genes.gtf
-motif_file: ${REPO_ROOT}/dependencies_data/hg38/HOCOMOCOv11_human.meme
+motif_file: ${REPO_ROOT}/dependencies_data/hg38/motifs.meme
 
 # --- Picard (required only when inputs include BAMs) ----------------------
 # picard: /Users/eunicechoi/path/to/picard.jar

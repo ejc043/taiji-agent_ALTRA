@@ -37,11 +37,17 @@ import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# Motif sources supported by the manifest. New ones added as `motif_<key>:`
+# entries in reference_manifest.yml. Default is set by --motif-source.
+MOTIF_SOURCES = ("cisbp", "hocomoco")
+DEFAULT_MOTIF_SOURCE = "cisbp"
 
 try:
     import yaml
@@ -276,6 +282,116 @@ def _build_fai(fasta: Path) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# Motif-source dispatch
+# ---------------------------------------------------------------------------
+
+
+def _resolve_motif_source(files_spec: dict, motif_source: str) -> dict:
+    """Filter the per-genome files dict so only the chosen motif source
+    remains, renamed to the bare `motif` key for downstream reporting.
+
+    The manifest carries parallel `motif_cisbp:` and `motif_hocomoco:` blocks
+    per genome; this picks one and discards the other so the rest of the
+    pipeline doesn't have to know about source-specific keys.
+    """
+    out: dict = {}
+    chosen_key = f"motif_{motif_source}"
+    for k, v in files_spec.items():
+        if not k.startswith("motif_"):
+            out[k] = v
+            continue
+        if k == chosen_key:
+            out["motif"] = v
+    if "motif" not in out:
+        avail = sorted(k.removeprefix("motif_") for k in files_spec
+                       if k.startswith("motif_"))
+        raise SystemExit(
+            f"motif source '{motif_source}' not declared in manifest for "
+            f"this genome. Available: {avail}. Add a `motif_{motif_source}:` "
+            f"block to reference_manifest.yml or pick a different source."
+        )
+    return out
+
+
+# ---------------------------------------------------------------------------
+# Tarball extraction (for sources like CIS-BP that ship inside MEME Suite's
+# ~30 MB motif-database tarball — we want one .meme file out of it)
+# ---------------------------------------------------------------------------
+
+
+def _extract_from_tar(tar_path: Path, member_path: str, dest: Path,
+                      log_prefix: str = "") -> int:
+    """Extract a single member from a (compressed) tar file to `dest`.
+
+    Atomic via .part rename. Returns bytes written. Raises if member missing.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(dest.suffix + ".part")
+    print(f"{log_prefix}extracting {member_path} from {tar_path.name}",
+          file=sys.stderr)
+    with tarfile.open(tar_path, "r:*") as tf:
+        try:
+            member = tf.getmember(member_path)
+        except KeyError:
+            available = [m.name for m in tf.getmembers()
+                         if member_path.split("/")[-1] in m.name][:10]
+            raise RuntimeError(
+                f"member '{member_path}' not in {tar_path.name}. "
+                f"Closest matches: {available}"
+            )
+        src = tf.extractfile(member)
+        if src is None:
+            raise RuntimeError(f"member '{member_path}' is not a regular file")
+        with tmp.open("wb") as out:
+            shutil.copyfileobj(src, out, length=1 << 20)
+    tmp.rename(dest)
+    return dest.stat().st_size
+
+
+def _fetch_to_cache(url: str, cache_path: Path, log_prefix: str = "") -> Path:
+    """Download `url` to `cache_path` if not already there. No expected-size
+    check — caller's manifest entry vouches for it."""
+    if cache_path.exists() and cache_path.stat().st_size > 0:
+        print(f"{log_prefix}cache hit: {cache_path}", file=sys.stderr)
+        return cache_path
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    # _download() already does atomic .part rename + wget/curl/urllib fallback.
+    _download(url, cache_path, gunzip=False, log_prefix=log_prefix)
+    return cache_path
+
+
+# ---------------------------------------------------------------------------
+# Stable motif symlink
+# ---------------------------------------------------------------------------
+
+
+def _refresh_motifs_symlink(motif_target: Path) -> Path | None:
+    """Create or update <genome>/motifs.meme as a relative symlink to the
+    just-fetched motif file. Lets downstream Taiji templates reference a
+    stable filename regardless of which motif source is in play.
+
+    Returns the symlink path on success, None if the target's parent dir
+    doesn't exist (shouldn't happen post-fetch).
+    """
+    if not motif_target.exists():
+        return None
+    link = motif_target.parent / "motifs.meme"
+    # Replace if present; preserve absent.
+    if link.is_symlink() or link.exists():
+        try:
+            link.unlink()
+        except OSError:
+            pass
+    try:
+        link.symlink_to(motif_target.name)   # relative target name
+    except OSError as e:
+        print(f"  WARN: could not create motifs.meme symlink: {e}",
+              file=sys.stderr)
+        return None
+    return link
+
+
+# ---------------------------------------------------------------------------
 # Per-file orchestration
 # ---------------------------------------------------------------------------
 
@@ -311,10 +427,19 @@ def _process_file(kind: str, spec: dict, output_dir: Path, *,
                           status="dry-run", bytes_on_disk=0,
                           error=f"would download {url}")
 
-    # Download.
+    # Tarball-extraction path: download URL once into <output>/_cache/, then
+    # extract just the named member into the target.
+    extract_path = spec.get("extract_from_tar")
     try:
-        bytes_written = _download(url, target, gunzip=gunzip,
-                                  log_prefix=f"  [{kind}] ")
+        if extract_path:
+            cache_dir = output_dir / "_cache"
+            cache_path = cache_dir / Path(url).name
+            _fetch_to_cache(url, cache_path, log_prefix=f"  [{kind}] ")
+            bytes_written = _extract_from_tar(cache_path, extract_path, target,
+                                              log_prefix=f"  [{kind}] ")
+        else:
+            bytes_written = _download(url, target, gunzip=gunzip,
+                                      log_prefix=f"  [{kind}] ")
     except Exception as e:
         return FileResult(kind=kind, target=target,
                           status="failed", error=str(e)[:240])
@@ -334,6 +459,7 @@ def _process_file(kind: str, spec: dict, output_dir: Path, *,
 
 def fetch_genome(genome: str, output_dir: str | Path, *,
                  manifest: dict | None = None,
+                 motif_source: str = DEFAULT_MOTIF_SOURCE,
                  force: bool = False, dry_run: bool = False,
                  check_only: bool = False) -> FetchResult:
     if manifest is None:
@@ -341,19 +467,30 @@ def fetch_genome(genome: str, output_dir: str | Path, *,
     if genome not in manifest:
         raise SystemExit(
             f"unknown genome '{genome}'. Available: {sorted(manifest)}")
+    if motif_source not in MOTIF_SOURCES:
+        raise SystemExit(
+            f"unknown --motif-source '{motif_source}'. "
+            f"Available: {list(MOTIF_SOURCES)}")
     output_dir = Path(output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
     result = FetchResult(genome=genome, output_dir=output_dir)
     spec = manifest[genome]
     print(f"[fetch-references] genome={genome}  output_dir={output_dir}",
           file=sys.stderr)
+    print(f"[fetch-references] motif source: {motif_source}", file=sys.stderr)
     print(f"[fetch-references] description: {spec.get('description', '')}",
           file=sys.stderr)
-    for kind, fspec in (spec.get("files") or {}).items():
+    files_spec = _resolve_motif_source(spec.get("files") or {}, motif_source)
+    for kind, fspec in files_spec.items():
         result.files[kind] = _process_file(
             kind, fspec, output_dir,
             force=force, dry_run=dry_run, check_only=check_only,
         )
+    # Refresh the stable motifs.meme symlink so Taiji templates referencing
+    # <genome>/motifs.meme don't have to know which source was picked.
+    motif_fr = result.files.get("motif")
+    if motif_fr and motif_fr.status in ("downloaded", "present") and not dry_run:
+        _refresh_motifs_symlink(motif_fr.target)
     return result
 
 
@@ -431,6 +568,12 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="After download, edit "
                         "skills/build-taiji-input/assets/genomes.yml in place "
                         "with the resolved fasta/gtf paths.")
+    p.add_argument("--motif-source", choices=list(MOTIF_SOURCES),
+                   default=DEFAULT_MOTIF_SOURCE,
+                   help=f"Which motif database to fetch. Default: "
+                        f"{DEFAULT_MOTIF_SOURCE} (CIS-BP 2.00 — JASPAR + "
+                        "TRANSFAC + ENCODE + SELEX-seq aggregated, keyed by "
+                        "TF gene symbol). Alternative: hocomoco (HOCOMOCO v11).")
     p.add_argument("--json", action="store_true",
                    help="Print machine-readable JSON report instead of text.")
     return p.parse_args(argv)
@@ -448,6 +591,7 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     result = fetch_genome(args.genome, args.output, manifest=manifest,
+                          motif_source=args.motif_source,
                           force=args.force, dry_run=args.dry_run,
                           check_only=args.check)
 
