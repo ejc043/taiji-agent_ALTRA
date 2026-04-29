@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -53,6 +54,94 @@ def _run_rscript(script: Path, *args: str) -> int:
     print(f"[coembed] $ {' '.join(cmd)}", file=sys.stderr)
     proc = subprocess.run(cmd, check=False)
     return proc.returncode
+
+
+def _macos_memory_budget_gb() -> tuple[float, float] | None:
+    """Return (physical_ram_gb, free_swap_gb) on macOS, else None.
+
+    Used both for the pre-flight log ("you have 18 GB RAM + 0.7 GB free
+    swap") and for the post-run OOM diagnostic when Rscript exits via
+    signal. Cheap — two sysctl calls, no I/O on the .rds files.
+    """
+    if platform.system() != "Darwin":
+        return None
+    try:
+        ram_b = int(subprocess.check_output(
+            ["sysctl", "-n", "hw.memsize"], text=True).strip())
+        ram_gb = ram_b / 1024 / 1024 / 1024
+    except Exception:
+        return None
+    swap_free_gb = 0.0
+    try:
+        line = subprocess.check_output(
+            ["sysctl", "-n", "vm.swapusage"], text=True).strip()
+        # "total = 24576.00M  used = 23863.81M  free = 712.19M  (encrypted)"
+        if "free = " in line:
+            v = line.split("free = ", 1)[1].split("M", 1)[0].strip()
+            swap_free_gb = float(v) / 1024.0
+    except Exception:
+        pass
+    return (ram_gb, swap_free_gb)
+
+
+def _diagnose_oom(rc: int) -> str | None:
+    """Translate a SIGKILL/SIGTERM/137/143 exit into an OOM mitigation hint.
+
+    The kernel killing R for jetsam pressure does NOT route through R's
+    error handler — stderr just stops mid-stage. Without this, the user
+    sees `coembed.R exited -15` after 5+ min and has to guess. Return a
+    multi-line diagnostic string, or None if the exit looks like a
+    normal R error (in which case R's own message is sufficient).
+    """
+    # subprocess returncode is -signum on POSIX when killed by signal.
+    # 128 + signum is the convention if shell wrappers got involved.
+    sig = None
+    if rc < 0:
+        sig = -rc
+    elif rc in (137, 143):           # 128 + 9 (SIGKILL) / 128 + 15 (SIGTERM)
+        sig = rc - 128
+    if sig not in (9, 15):
+        return None
+    sig_name = "SIGKILL" if sig == 9 else "SIGTERM"
+    lines = [
+        f"R was killed by {sig_name} mid-pipeline. No R error was emitted —",
+        "this is the kernel terminating the process from outside.",
+        "",
+        "Likely causes (most → least common on Mac):",
+        "  1. macOS jetsam OOM (swap budget exhausted during CCA / joint PCA).",
+        "  2. SLURM step-mem cgroup limit hit (SBATCH --mem too low).",
+        "  3. Manual `kill` from another terminal.",
+    ]
+    budget = _macos_memory_budget_gb()
+    if budget is not None:
+        ram_gb, swap_free_gb = budget
+        lines.append("")
+        lines.append(
+            f"This Mac has {ram_gb:.0f} GB physical RAM, "
+            f"{swap_free_gb:.1f} GB free swap right now."
+        )
+        if ram_gb < 24:
+            lines.append(
+                "  NOTE: 60k+21k cells coembed peaks around ~10-12 GB RSS plus a"
+            )
+            lines.append(
+                "  similar amount of swap pressure. On <24 GB Macs this is at"
+            )
+            lines.append("  the edge of feasibility.")
+    lines.extend([
+        "",
+        "Mitigations (any one usually unblocks):",
+        "  - Run on SLURM: `sbatch --mem=128G --cpus-per-task=8 ...` is reliable",
+        "    for >50k merged cells. The skill is unchanged on Linux.",
+        "  - Downsample the RNA reference before passing it in:",
+        "      rna_ds <- subset(rna, downsample = 20000)",
+        "      saveRDS(rna_ds, 'rna_ds.rds')",
+        "    Use the downsampled .rds for --rna; ATAC stays full-size since",
+        "    only the RNA reference matters for CCA's working set.",
+        "  - Lower --n-pcs from 30 to 20 (smaller joint PCA scaled matrix).",
+        "  - Free memory: close browsers / quit big GUI apps before running.",
+    ])
+    return "\n".join(lines)
 
 
 def _summarize(output_path: Path) -> dict:
@@ -118,6 +207,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Fail-loud if --metadata-cols values differ between "
                         "RNA and ATAC inputs (e.g. tissue=spleen vs Spleen). "
                         "Default: warn but continue.")
+    p.add_argument("--abort-on-memory-risk", action="store_true",
+                   help="Refuse to run if the macOS pre-flight estimates "
+                        "peak RAM > available RAM + 0.5*free_swap. Default: "
+                        "warn but continue. Use on shared Macs where a "
+                        "20-min thrash is worse than a fail-fast.")
+    p.add_argument("--fragments", type=Path, default=None,
+                   help="Path to fragments.tsv.gz. Required when the path "
+                        "embedded inside the ATAC ChromatinAssay is stale "
+                        "(the typical 'object built on HPC, scp'd to laptop' "
+                        "wart). The skill rebuilds the Fragment handle in "
+                        "place. Unused if the embedded path resolves on the "
+                        "current machine.")
     p.add_argument("--dry-run", action="store_true",
                    help="Validate inputs + print plan; don't run R.")
     return p.parse_args(argv)
@@ -204,9 +305,34 @@ def main(argv: list[str] | None = None) -> int:
         r_args += ["--reuse-atac-reductions"]
     if args.strict_metadata:
         r_args += ["--strict-metadata"]
+    if args.abort_on_memory_risk:
+        r_args += ["--abort-on-memory-risk"]
+    if args.fragments is not None:
+        if not args.fragments.exists():
+            print(f"ERROR: --fragments '{args.fragments}' does not exist",
+                  file=sys.stderr)
+            return 2
+        r_args += ["--fragments", str(args.fragments)]
+
+    # Surface available memory budget BEFORE Rscript runs, so a later OOM
+    # diagnostic has a reference point and the user knows up-front if the
+    # situation is risky.
+    budget = _macos_memory_budget_gb()
+    if budget is not None:
+        ram_gb, swap_free_gb = budget
+        print(f"[coembed] memory budget: {ram_gb:.0f} GB RAM, "
+              f"{swap_free_gb:.1f} GB free swap (macOS)", file=sys.stderr)
 
     rc = _run_rscript(R_COEMBED, *r_args)
     if rc != 0:
+        oom_hint = _diagnose_oom(rc)
+        if oom_hint is not None:
+            print("", file=sys.stderr)
+            print("[coembed] " + "-" * 60, file=sys.stderr)
+            for line in oom_hint.splitlines():
+                print(f"[coembed] {line}" if line else "[coembed]",
+                      file=sys.stderr)
+            print("[coembed] " + "-" * 60, file=sys.stderr)
         print(f"ERROR: coembed.R exited {rc}", file=sys.stderr)
         return rc
 

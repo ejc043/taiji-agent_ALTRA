@@ -31,8 +31,36 @@ suppressPackageStartupMessages({
   library(Seurat)
   library(Signac)
   library(GenomicRanges)
+  # GenomeInfoDb provides `seqlevelsStyle<-` (the assignment generic used to
+  # flip Ensembl-style "1, 2, 3" chromosome names to UCSC-style "chr1, chr2,
+  # chr3" on the EnsDb annotations). GenomicRanges DEPENDS on it but in some
+  # bioconda builds the assignment form is not re-exported under
+  # suppressPackageStartupMessages, so we attach it explicitly.
+  library(GenomeInfoDb)
   library(jsonlite)
 })
+
+# macOS R imposes a default VSIZE cap (~16-18 GB on Apple Silicon, regardless
+# of physical RAM). FindTransferAnchors / CCA / joint PCA on 60k+21k cells
+# easily blow past it, errors out with "vector memory limit of 18.0 Gb
+# reached, see mem.maxVSize()". On Linux there is no such cap, so this
+# is a no-op there. We bump to 128 GB unconditionally — if the host has
+# less physical RAM, the kernel OOMs as usual; we just want R itself to
+# stop self-throttling. Override via TAIJI_R_MAX_VSIZE_GB env var.
+if (Sys.info()[["sysname"]] == "Darwin") {
+  cap_gb <- suppressWarnings(as.numeric(Sys.getenv("TAIJI_R_MAX_VSIZE_GB",
+                                                    unset = "128")))
+  if (is.na(cap_gb) || cap_gb <= 0) cap_gb <- 128
+  tryCatch({
+    mem.maxVSize(cap_gb * 1024)   # mem.maxVSize takes MB
+    message(sprintf(
+      "[coembed] macOS detected; bumped R VSIZE cap to %.0f GB (override via TAIJI_R_MAX_VSIZE_GB).",
+      cap_gb))
+  }, error = function(e) {
+    message("[coembed] WARN: could not bump R VSIZE cap: ",
+            conditionMessage(e))
+  })
+}
 
 # ------------------------------------------------------------------------
 # CLI
@@ -63,8 +91,12 @@ option_list <- list(
               help = "If ATAC object already has 'lsi' + 'umap.atac' (or 'umap') reductions, skip TF-IDF/SVD/UMAP. Saves ~3-5 min on 20k+ cells."),
   make_option("--strict-metadata", action = "store_true", default = FALSE,
               help = "Fail-loud if any --metadata-cols values differ between the RNA and ATAC inputs (e.g. tissue=spleen on RNA, tissue=Spleen on ATAC creates 2 separate groups downstream instead of 1). Default: warn but continue."),
+  make_option("--fragments",           type = "character", default = NULL,
+              help = "Path to fragments.tsv.gz to attach to the ATAC ChromatinAssay. Required when the path embedded in the input .rds is stale (very common for objects shipped from HPC: the embedded path points at the original user's home dir and file.exists() returns FALSE on the destination machine). The skill rebuilds the Fragments handle in place using the cells already attached to the existing fragment objects, so no barcode reconciliation happens here. If the embedded path resolves on the current machine, this flag is unused."),
   make_option("--no-cluster",          action = "store_true", default = FALSE),
-  make_option("--no-plot",             action = "store_true", default = FALSE)
+  make_option("--no-plot",             action = "store_true", default = FALSE),
+  make_option("--abort-on-memory-risk", action = "store_true", default = FALSE,
+              help = "Refuse to run if the macOS pre-flight estimates peak RAM > available budget. Default: warn but continue. Use this on shared Macs where you'd rather fail-fast than risk an OOM-kill mid-pipeline.")
 )
 opt <- parse_args(OptionParser(option_list = option_list))
 
@@ -115,6 +147,77 @@ pick_atac_assay <- function(obj) {
          "Available assays: ", paste(Assays(obj), collapse = ", "))
   }
   hits[1]
+}
+
+# ------------------------------------------------------------------------
+# Repair stale fragment paths
+# ------------------------------------------------------------------------
+# A ChromatinAssay carries Fragment objects that hard-code an absolute
+# path to fragments.tsv.gz. When the .rds is built on HPC and shipped to
+# a user's laptop (very common), that path points at the original user's
+# home dir and resolves nowhere — but readRDS succeeds, so the failure
+# only surfaces ~10 min later inside GeneActivity() with an opaque
+# tabix/seek error. Catch this at startup: if the embedded path is
+# missing AND a --fragments override was provided, rebuild a single
+# Fragment object in place using the existing barcode-cell mapping; if
+# the path is missing AND no override, refuse loudly with the fix.
+repair_fragments <- function(atac, atac_assay, fragments_override = NULL) {
+  fr <- Fragments(atac[[atac_assay]])
+  if (length(fr) == 0) {
+    stop("ATAC ChromatinAssay '", atac_assay, "' has no Fragment objects. ",
+         "GeneActivity() requires a fragments handle. Attach one upstream ",
+         "via Fragments(atac[['", atac_assay, "']]) <- CreateFragmentObject(...).")
+  }
+  embedded_paths <- vapply(fr, function(f) tryCatch(slot(f, "path"),
+                                                     error = function(e) ""),
+                            character(1))
+  exists_mask <- file.exists(embedded_paths)
+  message(sprintf("[coembed]   ATAC fragments: %d handle(s); paths exist=%s",
+                  length(fr), paste(exists_mask, collapse = ",")))
+  for (i in seq_along(fr)) {
+    message(sprintf("[coembed]     [%d] %s -> %s",
+                    i, embedded_paths[i],
+                    if (exists_mask[i]) "OK" else "MISSING"))
+  }
+  if (all(exists_mask)) return(atac)
+
+  if (is.null(fragments_override)) {
+    stop("ATAC fragments path embedded in the .rds does not resolve on this ",
+         "machine: ", paste(embedded_paths[!exists_mask], collapse = ", "),
+         ". This is the typical 'object built on HPC, scp'd to laptop' wart. ",
+         "Pass --fragments <path/to/fragments.tsv.gz> so the skill can ",
+         "rebuild the ChromatinAssay's fragment handle in place. ",
+         "(Or fix upstream: ",
+         "fr <- CreateFragmentObject(path, cells = colnames(atac)); ",
+         "Fragments(atac[['", atac_assay, "']]) <- NULL; ",
+         "Fragments(atac[['", atac_assay, "']]) <- fr; saveRDS(...).)")
+  }
+
+  if (!file.exists(fragments_override)) {
+    stop("--fragments path '", fragments_override, "' does not exist.")
+  }
+  tbi <- paste0(fragments_override, ".tbi")
+  if (!file.exists(tbi)) {
+    message("[coembed]   WARN: tabix index '", tbi, "' not found next to ",
+            "the fragments file. GeneActivity() needs it; if missing, run ",
+            "`tabix -p bed ", fragments_override, "` upstream.")
+  }
+  # Reuse the existing cell list. If multiple Fragment objects existed
+  # (rare for separate-assay), unify them to a single override path with
+  # the union of cells, so the rebuilt handle is unambiguous.
+  cells <- unique(unlist(lapply(fr, function(f) tryCatch(slot(f, "cells"),
+                                                          error = function(e) NULL))))
+  if (length(cells) == 0) {
+    cells <- colnames(atac[[atac_assay]])
+  }
+  message(sprintf("[coembed]   rebuilding Fragment handle: path=%s, cells=%d",
+                  fragments_override, length(cells)))
+  new_fr <- CreateFragmentObject(path = fragments_override,
+                                 cells = cells, validate.fragments = FALSE,
+                                 verbose = FALSE)
+  Fragments(atac[[atac_assay]]) <- NULL
+  Fragments(atac[[atac_assay]]) <- new_fr
+  atac
 }
 
 # ------------------------------------------------------------------------
@@ -195,6 +298,8 @@ binary_search_resolution <- function(obj, n_cells, target_size, max_iter = 8L) {
   lo <- 0.01; hi <- 5.0
   trace <- list()
   obj_try <- obj
+  prev_n_clust <- NA_integer_
+  prev_r <- NA_real_
   for (i in seq_len(max_iter)) {
     obj_try <- FindClusters(obj, resolution = r, verbose = FALSE)
     n_clust <- length(unique(Idents(obj_try)))
@@ -210,6 +315,23 @@ binary_search_resolution <- function(obj, n_cells, target_size, max_iter = 8L) {
     if (in_range(mean_size, target_size)) {
       return(list(obj = obj_try, resolution = r, trace = trace))
     }
+    # Saturation early-stop: if Louvain hits its modularity ceiling at the
+    # outer bracket (r == hi == 5.0) and the cluster count is unchanged from
+    # the prior iter, further iters at the same resolution are guaranteed to
+    # produce the same partition (FindClusters is deterministic at fixed
+    # seed). Break out instead of burning ~60s/iter on identical work.
+    # Common when target_size is small relative to the data's intrinsic
+    # cluster structure (e.g. target=200 on 81k cells where Louvain
+    # plateaus at ~75 clusters / 1080 cells/cluster).
+    if (!is.na(prev_n_clust) && n_clust == prev_n_clust && r == prev_r &&
+        (r >= hi - 1e-9 || r <= lo + 1e-9)) {
+      message(sprintf(
+        "[coembed] resolution search hit Louvain modularity ceiling at r=%.3f (n_clust=%d unchanged across two iters at the bracket bound). Stopping early; downstream stratification still works on the resulting clusters.",
+        r, n_clust))
+      return(list(obj = obj_try, resolution = r, trace = trace))
+    }
+    prev_n_clust <- n_clust
+    prev_r <- r
     if (mean_size > target_size) {
       lo <- r
       r <- if (hi < 5.0) 0.5 * (r + hi) else min(r * 1.5, hi)
@@ -275,8 +397,11 @@ for (an in names(attributes(rna)$assays)) {
 }
 DefaultAssay(rna) <- "RNA"
 
-if (is.null(GetAssayData(rna, slot = "counts")) ||
-    nrow(GetAssayData(rna, slot = "counts")) == 0) {
+# NOTE: SeuratObject >= 5.0 made the `slot=` arg of GetAssayData() defunct
+# (not just deprecated — it errors out). Use `layer=` everywhere.
+rna_counts <- tryCatch(GetAssayData(rna, layer = "counts"),
+                       error = function(e) NULL)
+if (is.null(rna_counts) || nrow(rna_counts) == 0) {
   stop("RNA object has no raw counts. Cannot proceed with NormalizeData.")
 }
 
@@ -304,8 +429,9 @@ if ("seurat_clusters" %in% colnames(rna@meta.data)) {
 # asserts the input is already prepared and the slots/reductions exist.
 rna_has_pca  <- "pca"  %in% names(rna@reductions)
 rna_has_umap <- "umap" %in% names(rna@reductions)
-rna_has_data <- !is.null(GetAssayData(rna, slot = "data")) &&
-                nrow(GetAssayData(rna, slot = "data")) > 0
+rna_data_layer <- tryCatch(GetAssayData(rna, layer = "data"),
+                           error = function(e) NULL)
+rna_has_data <- !is.null(rna_data_layer) && nrow(rna_data_layer) > 0
 rna_has_vf   <- length(VariableFeatures(rna)) > 0
 
 if (opt$`reuse-rna-reductions` && rna_has_pca && rna_has_umap &&
@@ -359,6 +485,13 @@ message(sprintf(
   "seurat_clusters" %in% colnames(atac@meta.data)
 ))
 
+# Repair stale fragments path BEFORE GeneActivity / annotation. If the
+# .rds was built on a different machine, the embedded path in each
+# Fragment object is absolute and will not resolve here. GeneActivity()
+# would fail ~10 min in with an opaque tabix error.
+atac <- repair_fragments(atac, atac_assay,
+                         fragments_override = opt$fragments)
+
 # Some ATAC objects (e.g. those from prior integrate_atac runs, or split
 # multiome objects) already carry an "RNA" assay. We're going to overwrite
 # it with freshly imputed values from TransferData later — surface this
@@ -384,6 +517,64 @@ if ("seurat_clusters" %in% colnames(atac@meta.data)) {
 if (length(meta_cols) > 0) {
   validate_metadata_consistency(rna, atac, meta_cols,
                                 strict = opt$`strict-metadata`)
+}
+
+# ------------------------------------------------------------------------
+# Memory pre-flight on macOS — catch the swap-thrash trap BEFORE GeneActivity
+# ------------------------------------------------------------------------
+# On 18 GB-physical Macs (which is the most common Mac config in our lab),
+# FindTransferAnchors + joint PCA peaks at ~10-12 GB RSS for a 60k+21k pair.
+# The default macOS swap budget is ~24 GB, and the spike fits — but barely.
+# For larger pairs (e.g. 80k+30k) the working set exceeds RAM+swap and the
+# kernel goes into thrash or jetsam-kills R mid-CCA with no R error message.
+#
+# We compute a pessimistic peak-RSS estimate from cell counts (with fudge=6
+# for L2-norm / score / scaled-data intermediates) and emit:
+#   - INFO when peak < 0.8 * physical_RAM (everything fits in RAM)
+#   - WARN when peak ∈ [0.8 * RAM, RAM + 0.5 * swap] (slow but should finish)
+#   - HARD-WARN when peak > RAM + 0.5 * swap (likely OOM-kill on macOS)
+#
+# Linux is unaffected (no jetsam, no fixed swap budget, R doesn't self-cap).
+# We still log the estimate so SLURM users can sanity-check their --mem.
+n_features_planned <- max(length(VariableFeatures(rna)), 2000L)
+peak_gb_estimate <- 8 * n_features_planned * (ncol(rna) + ncol(atac)) * 6 /
+                    1024 / 1024 / 1024
+message(sprintf(
+  "[coembed] peak-RAM estimate (CCA + joint PCA): %.1f GB at %d cells x %d features",
+  peak_gb_estimate, ncol(rna) + ncol(atac), n_features_planned))
+
+if (Sys.info()[["sysname"]] == "Darwin") {
+  ram_gb <- tryCatch({
+    as.numeric(system2("sysctl", c("-n", "hw.memsize"), stdout = TRUE)) /
+      1024 / 1024 / 1024
+  }, error = function(e) NA_real_)
+  swap_free_gb <- tryCatch({
+    line <- system2("sysctl", c("-n", "vm.swapusage"), stdout = TRUE)
+    if (grepl("free = ", line, fixed = TRUE)) {
+      as.numeric(sub(".*free = ([0-9.]+)M.*", "\\1", line)) / 1024
+    } else NA_real_
+  }, error = function(e) NA_real_)
+
+  if (!is.na(ram_gb)) {
+    budget_gb <- ram_gb + 0.5 * ifelse(is.na(swap_free_gb), 0, swap_free_gb)
+    message(sprintf(
+      "[coembed]   macOS budget: %.0f GB RAM + %.1f GB free swap = %.1f GB usable",
+      ram_gb, ifelse(is.na(swap_free_gb), 0, swap_free_gb), budget_gb))
+    if (peak_gb_estimate > budget_gb) {
+      message(sprintf(
+        "[coembed]   HARD-WARN: estimated peak %.1f GB > usable budget %.1f GB.\n  This run is very likely to be OOM-killed by macOS jetsam during\n  FindTransferAnchors (~5 min in) or joint PCA (~15 min in), with NO\n  R error reported. Recommended mitigations (any one usually unblocks):\n    1. Run on SLURM (`sbatch --mem=128G ...`) — the skill is unchanged on Linux.\n    2. Downsample the RNA reference: `rna <- subset(rna, downsample = 20000); saveRDS(rna, ...)`.\n       ATAC stays full-size (it's the query, not the working-set driver).\n    3. Lower --n-pcs from 30 to 20 (smaller joint PCA scaled matrix).\n    4. Free swap before running: close browsers / quit big GUI apps.\n  Continuing — pass --abort-on-memory-risk to refuse instead.",
+        peak_gb_estimate, budget_gb))
+      if (isTRUE(opt$`abort-on-memory-risk`)) {
+        stop(sprintf(
+          "[coembed] aborting: estimated peak %.1f GB exceeds macOS budget %.1f GB and --abort-on-memory-risk is set.",
+          peak_gb_estimate, budget_gb))
+      }
+    } else if (peak_gb_estimate > 0.8 * ram_gb) {
+      message(sprintf(
+        "[coembed]   WARN: estimated peak %.1f GB > 0.8 * physical RAM (%.1f GB). Run will fit but rely on swap; expect 2-3x slower CCA.",
+        peak_gb_estimate, ram_gb))
+    }
+  }
 }
 
 # Annotation pull for GeneActivity. Signac wants UCSC-style chromosome names
@@ -441,6 +632,30 @@ atac <- ScaleData(atac, features = rownames(atac), verbose = FALSE)
 # Stage 4 — FindTransferAnchors (RNA ref, ATAC query, CCA)
 # ------------------------------------------------------------------------
 
+# Features-used audit: FindTransferAnchors silently drops any feature in
+# `features = ...` that isn't present in BOTH the reference and query
+# assays, and only prints a one-line warning to stderr. Compute the
+# intersection up-front so we can record it in the summary JSON. A high
+# drop rate (>50%) usually means the genome / EnsDb / RNA gene-name
+# convention don't match (e.g. running mm10 EnsDb against a human RNA
+# object, or Ensembl IDs vs gene symbols).
+features_requested <- VariableFeatures(rna)
+features_in_atac   <- intersect(features_requested,
+                                 rownames(GetAssayData(atac, assay = "ACTIVITY",
+                                                       layer = "counts")))
+n_features_used   <- length(features_in_atac)
+n_features_dropped <- length(features_requested) - n_features_used
+message(sprintf(
+  "[coembed]   features for anchoring: %d requested -> %d shared (%.0f%% kept, %d dropped from ACTIVITY assay)",
+  length(features_requested), n_features_used,
+  100 * n_features_used / max(1, length(features_requested)),
+  n_features_dropped))
+if (n_features_used < 0.5 * length(features_requested)) {
+  message(sprintf(
+    "[coembed]   WARN: only %d of %d RNA variable features are present in the ACTIVITY assay. Common cause: --genome / EnsDb mismatch with the RNA gene-name convention (e.g. mm10 EnsDb on human data, or Ensembl IDs vs symbols). The Stuart vignette assumes both inputs use gene symbols matching the EnsDb's gene_name slot.",
+    n_features_used, length(features_requested)))
+}
+
 message("[coembed] FindTransferAnchors: RNA (ref) -> ATAC (query, ACTIVITY assay), CCA")
 transfer_anchors <- FindTransferAnchors(
   reference       = rna,
@@ -460,7 +675,7 @@ message("[coembed]   found ", n_anchors, " anchors")
 
 message("[coembed] TransferData: imputing RNA expression into ATAC cells")
 genes_use <- VariableFeatures(rna)
-refdata <- GetAssayData(rna, assay = "RNA", slot = "data")[genes_use, ]
+refdata <- GetAssayData(rna, assay = "RNA", layer = "data")[genes_use, ]
 imputation <- TransferData(
   anchorset        = transfer_anchors,
   refdata          = refdata,
@@ -562,6 +777,10 @@ summary_json <- list(
   n_cells_total = ncol(coembed),
   n_anchors  = n_anchors,
   n_genes_used = length(genes_use),
+  n_features_requested = length(features_requested),
+  n_features_used      = n_features_used,
+  n_features_dropped   = n_features_dropped,
+  peak_ram_estimate_gb = round(peak_gb_estimate, 1),
   chosen_resolution = chosen_resolution,
   resolution_trace = resolution_trace,
   n_clusters_total = n_clusters_total,
