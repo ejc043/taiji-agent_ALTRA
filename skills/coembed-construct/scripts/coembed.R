@@ -227,9 +227,52 @@ binary_search_resolution <- function(obj, n_cells, target_size, max_iter = 8L) {
 # Stage 1 — load & process RNA
 # ------------------------------------------------------------------------
 
+# ------------------------------------------------------------------------
+# Seurat version compatibility check
+# ------------------------------------------------------------------------
+# The skill targets Seurat v5+. Inputs saved with Assay5 (Seurat v5) load
+# without error in Seurat v4 BUT silently misbehave: Assays() returns
+# empty, GetAssayData() errors with "'RNA' is not an assay", and the
+# whole pipeline crashes minutes in on the resulting NULL counts. Catch
+# this at startup so the user fixes their env before spending 30 min on
+# coembed.
+seurat_version <- tryCatch(
+  utils::packageVersion("Seurat"),
+  error = function(e) NULL
+)
+if (is.null(seurat_version)) {
+  stop("Seurat is not installed. Run `bin/install.sh --profile sc` first.")
+}
+message(sprintf("[coembed] Seurat version: %s", as.character(seurat_version)))
+if (seurat_version < "5.0.0") {
+  message(sprintf(
+    "[coembed] WARN: Seurat %s detected (< 5.0). If your input objects use ",
+    as.character(seurat_version)),
+    "Seurat v5 layouts (Assay5 with layered counts/data) the skill will ",
+    "fail because v4 can't access Assay5 contents. Consider upgrading ",
+    "the env: `micromamba install -n taiji-agent -c bioconda 'r-seurat>=5.0'`. ",
+    "Continuing — if your inputs are v3 Assay objects this will work fine.")
+}
+
 message("[coembed] loading RNA from ", opt$rna)
 rna <- readRDS(opt$rna)
 if (!inherits(rna, "Seurat")) stop("RNA file is not a Seurat object")
+
+# Detect Assay5 inputs under Seurat <5 and refuse loudly. If the user
+# squelched the version warning above, this is the explicit guard at the
+# point of failure. We check via the assay class, not Assays(rna),
+# because Assays() returns empty when v4 reads a v5 object.
+for (an in names(attributes(rna)$assays)) {
+  ac <- class(attributes(rna)$assays[[an]])
+  if ("Assay5" %in% ac && seurat_version < "5.0.0") {
+    stop(sprintf(
+      "RNA assay '%s' is class Assay5 (Seurat v5) but Seurat %s is loaded. ",
+      an, as.character(seurat_version)),
+      "Assays() returns empty under v4 and the pipeline crashes ~10 min in. ",
+      "Either: (1) upgrade the env to Seurat >= 5, or (2) downgrade the ",
+      "input via `obj[['RNA']] <- as(obj[['RNA']], 'Assay'); saveRDS(...)`.")
+  }
+}
 DefaultAssay(rna) <- "RNA"
 
 if (is.null(GetAssayData(rna, slot = "counts")) ||
@@ -291,6 +334,17 @@ rna$assay <- "RNA"
 message("[coembed] loading ATAC from ", opt$atac)
 atac <- readRDS(opt$atac)
 if (!inherits(atac, "Seurat")) stop("ATAC file is not a Seurat object")
+
+# Same Assay5-under-v4 guard for ATAC.
+for (an in names(attributes(atac)$assays)) {
+  ac <- class(attributes(atac)$assays[[an]])
+  if ("Assay5" %in% ac && seurat_version < "5.0.0") {
+    stop(sprintf(
+      "ATAC assay '%s' is class Assay5 (Seurat v5) but Seurat %s is loaded. ",
+      an, as.character(seurat_version)),
+      "Upgrade the env to Seurat >= 5, or downgrade the input.")
+  }
+}
 
 atac_assay <- pick_atac_assay(atac)
 DefaultAssay(atac) <- atac_assay
