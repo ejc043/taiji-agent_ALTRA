@@ -40,6 +40,9 @@ Implements the [Stuart et al. 2019 / Signac integrate_atac vignette](https://stu
 | `--no-cluster` | Stop after joint UMAP; don't cluster. Useful if the user wants to cluster manually. |
 | `--no-plot` | Skip the QC UMAP rendering. |
 | `--resolution` | Force a single resolution instead of binary search. Default: unset (binary search runs). |
+| `--reuse-rna-reductions` | If the RNA object already has `pca` + `umap` reductions plus VFs and a non-empty `data` slot, skip the standard preprocessing pipeline (Norm/VF/Scale/PCA/UMAP). Saves 5–10 min on 60k+ cells. Falls back to full preprocessing if any prerequisite is missing. |
+| `--reuse-atac-reductions` | If the ATAC object already has `lsi` + `umap.atac` (or `umap`) reductions, skip TF-IDF/SVD/UMAP. Saves 3–5 min on 20k+ cells. |
+| `--strict-metadata` | Fail-loud if any `--metadata-cols` values differ between RNA and ATAC inputs (e.g. tissue=`spleen` on RNA, tissue=`Spleen` on ATAC). Default: warn but continue. Use this for production runs where silent group-splitting downstream would corrupt your stratification. |
 
 ## Outputs
 
@@ -92,6 +95,22 @@ python skills/coembed-construct/scripts/coembed.py \
 ```
 
 The output `coembed.rds` is the input to `pseudobulk-construct --input <path>/coembed.rds --use-existing-clusters` (since clustering already happened here).
+
+## Real-data gotchas and how the skill handles them
+
+These come up in practice on multi-sample 10x datasets. Each is now logged at startup so the user sees the situation before the long-running steps fire.
+
+| Gotcha | What it looks like | Skill behavior |
+|--------|-------------------|----------------|
+| **Multi-sample-aggregated barcodes** with `-1`/`-2`/.../`-N` suffixes (cellranger-aggr / 10x Multi output) | `AAACCAAAGAACGGCA-1`, `AAACGAAAGAACGACC-2` etc. The fragments file carries all sample suffixes; each Seurat object holds the subset that passed QC. | Identity-match works as-is; my barcode reconciliation tries identity FIRST and only suffix-strips if that fails. No action needed — just don't be surprised when `gunzip -c fragments.tsv.gz | head` shows multiple suffixes. |
+| **Pre-existing reductions** on inputs (`pca, umap` on RNA / `lsi, umap` on ATAC) | The user has already run their own per-modality clustering and embedding before handing objects off. | Skill RE-COMPUTES from raw counts by default (reproducibility). Pass `--reuse-rna-reductions` and/or `--reuse-atac-reductions` to skip — saves ~10 min on a 60k+21k pair. Logged at startup: `RNA input: 60000 cells, reductions={pca,umap}`. |
+| **Pre-existing `seurat_clusters`** column on either input | The user already clustered each modality. After joint clustering, the original labels would be silently overwritten. | Skill ALWAYS preserves them under `rna_input_clusters` and `atac_input_clusters` BEFORE merging, so they survive into the coembed object's `meta.data`. You can compare original-per-modality vs. de-novo-joint clusters downstream. |
+| **Pre-existing `RNA` assay on the ATAC object** | E.g. from a prior `integrate_atac` run, or because the ATAC object was sliced from a multiome. | Skill OVERWRITES it with freshly imputed values from `TransferData`. Logged loudly: `NOTE: ATAC object already carries an 'RNA' assay. It will be REPLACED later`. If you want to keep the existing values, save them under a different assay name (e.g. `atac[["RNA_old"]] <- atac[["RNA"]]`) before invoking this skill. |
+| **Large cell counts** (>50k merged) | Joint PCA/UMAP on 60k+ cells with ~2k variable features needs 10–20 GB peak RAM. | No code change — just an SBATCH `--mem` reality check. Recommend `--mem=128G` for >80k merged cells. |
+| **Metadata cols missing on one input** | e.g. you pass `--metadata-cols genotype,batch_id` but `batch_id` only exists on the ATAC side. | After merge, the column is NA for cells from the side that lacked it. Plotting still works (NA shows as gray). The QC plot logs a `WARN` listing skipped cols. |
+| **Metadata VALUE / CASING mismatch across inputs** | RNA has `tissue ∈ {spleen, siIEL}`, ATAC has `tissue ∈ {Spleen, siIEL}`. After merge, `tissue` has THREE distinct values; downstream `pseudobulk-construct --metadata-cols tissue` would create separate groups for `spleen` vs `Spleen`. | Skill validates `--metadata-cols` value sets across both inputs at startup. Logs a `WARN: CASE-ONLY mismatch in 'tissue'` (or `WARN: VALUE mismatch`) listing the offending values, with a copy-paste fix hint (e.g. `atac$tissue <- tolower(atac$tissue)`). Pass `--strict-metadata` to fail-loud instead of warning. |
+| **Seurat v5 (`Assay5`) inputs with layer-based storage** | `assays$RNA` is class `Assay5` and counts/data live in `attributes(.)$layers$counts` rather than the v3 slot. `attributes(obj)$assays$RNA` looks empty in raw probes but `GetAssayData()` returns the data correctly. | The skill uses `GetAssayData()` / `NormalizeData()` / `RunPCA()` consistently — these all dispatch correctly across v3 / v5. No code change needed; just don't be alarmed when `str(obj)` shows empty slot/layer in old debug habits. The `--reuse-rna-reductions` check uses `GetAssayData(slot="data")` which works on v5. |
+| **Mixed-version RNA/ATAC** | RNA is Seurat v5 (Assay5), ATAC is Seurat v3 (Assay / ChromatinAssay). | `merge()` handles this in Seurat ≥ 5.0; the result follows the active class on the LHS object. The skill loads RNA first so a v5 RNA produces a v5 coembed object. If `merge` errors on your specific input, downgrade RNA via `JoinLayers(rna)` upstream. |
 
 ## Pre-flight checks the skill enforces
 

@@ -106,6 +106,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Stop after joint UMAP; don't cluster.")
     p.add_argument("--no-plot", action="store_true",
                    help="Skip the QC UMAP rendering.")
+    p.add_argument("--reuse-rna-reductions", action="store_true",
+                   help="If RNA object already has pca + umap reductions and "
+                        "VFs computed, skip Norm/VF/Scale/PCA/UMAP. Saves "
+                        "5-10 min on 60k+ cells. Falls back to full "
+                        "preprocessing if any prerequisite is missing.")
+    p.add_argument("--reuse-atac-reductions", action="store_true",
+                   help="If ATAC object already has lsi + umap reductions, "
+                        "skip TF-IDF/SVD/UMAP. Saves 3-5 min on 20k+ cells.")
+    p.add_argument("--strict-metadata", action="store_true",
+                   help="Fail-loud if --metadata-cols values differ between "
+                        "RNA and ATAC inputs (e.g. tissue=spleen vs Spleen). "
+                        "Default: warn but continue.")
     p.add_argument("--dry-run", action="store_true",
                    help="Validate inputs + print plan; don't run R.")
     return p.parse_args(argv)
@@ -186,6 +198,12 @@ def main(argv: list[str] | None = None) -> int:
         r_args += ["--no-cluster"]
     if args.no_plot:
         r_args += ["--no-plot"]
+    if args.reuse_rna_reductions:
+        r_args += ["--reuse-rna-reductions"]
+    if args.reuse_atac_reductions:
+        r_args += ["--reuse-atac-reductions"]
+    if args.strict_metadata:
+        r_args += ["--strict-metadata"]
 
     rc = _run_rscript(R_COEMBED, *r_args)
     if rc != 0:

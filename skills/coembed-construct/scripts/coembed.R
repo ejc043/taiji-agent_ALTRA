@@ -57,6 +57,12 @@ option_list <- list(
               help = "Skip first N LSI components on ATAC (depth-correlated)."),
   make_option("--resolution",          type = "double", default = NA_real_,
               help = "Force a single resolution; default: scale-aware binary search."),
+  make_option("--reuse-rna-reductions", action = "store_true", default = FALSE,
+              help = "If RNA object already has 'pca' + 'umap' reductions and 'data' slot is populated, skip NormalizeData/FindVariableFeatures/ScaleData/RunPCA/RunUMAP. Saves ~5-10 min on 60k+ cells."),
+  make_option("--reuse-atac-reductions", action = "store_true", default = FALSE,
+              help = "If ATAC object already has 'lsi' + 'umap.atac' (or 'umap') reductions, skip TF-IDF/SVD/UMAP. Saves ~3-5 min on 20k+ cells."),
+  make_option("--strict-metadata", action = "store_true", default = FALSE,
+              help = "Fail-loud if any --metadata-cols values differ between the RNA and ATAC inputs (e.g. tissue=spleen on RNA, tissue=Spleen on ATAC creates 2 separate groups downstream instead of 1). Default: warn but continue."),
   make_option("--no-cluster",          action = "store_true", default = FALSE),
   make_option("--no-plot",             action = "store_true", default = FALSE)
 )
@@ -131,6 +137,59 @@ in_range <- function(mean_size, target_size) {
   mean_size >= lo && mean_size <= hi
 }
 
+validate_metadata_consistency <- function(rna, atac, meta_cols, strict = FALSE) {
+  # Catches the silent-bug case where the same conceptual metadata col has
+  # different value SETS or different value CASING across the two inputs.
+  #
+  # Real example: RNA has tissue ∈ {spleen, siIEL}, ATAC has tissue ∈
+  # {Spleen, siIEL}. After merge the column has THREE distinct values
+  # (siIEL appears once in each, but spleen + Spleen are split). Then
+  # pseudobulk-construct --metadata-cols tissue produces 3 cross-product
+  # groups per cluster instead of 2 — silently doubling the spleen
+  # samples and giving each half-strength. Loudly warn here so the user
+  # harmonizes upstream before spending 30 min on coembed.
+  rna_md  <- attributes(rna)$meta.data
+  atac_md <- attributes(atac)$meta.data
+  any_issue <- FALSE
+  for (col in meta_cols) {
+    on_rna  <- col %in% colnames(rna_md)
+    on_atac <- col %in% colnames(atac_md)
+    if (!on_rna && !on_atac) {
+      message(sprintf("[coembed] WARN: --metadata-cols '%s' is on neither input", col))
+      any_issue <- TRUE
+      next
+    }
+    if (!on_rna || !on_atac) {
+      message(sprintf("[coembed] WARN: --metadata-cols '%s' on only %s; cells from the other side will be NA",
+                      col, if (on_rna) "RNA" else "ATAC"))
+      any_issue <- TRUE
+      next
+    }
+    rna_vals  <- sort(unique(as.character(rna_md[[col]])))
+    atac_vals <- sort(unique(as.character(atac_md[[col]])))
+    rna_only  <- setdiff(rna_vals, atac_vals)
+    atac_only <- setdiff(atac_vals, rna_vals)
+    if (length(rna_only) > 0 || length(atac_only) > 0) {
+      # Check for case-only mismatch — most common silent bug.
+      ci_match <- length(setdiff(tolower(rna_vals), tolower(atac_vals))) == 0 &&
+                  length(setdiff(tolower(atac_vals), tolower(rna_vals))) == 0
+      severity <- if (ci_match) "CASE-ONLY" else "VALUE"
+      message(sprintf(
+        "[coembed] WARN: %s mismatch in --metadata-cols '%s'.\n  RNA values:  {%s}\n  ATAC values: {%s}\n  RNA-only:    {%s}\n  ATAC-only:   {%s}\n  Effect: cross-product stratification downstream will create separate groups for each variant. Harmonize upstream (e.g. atac$%s <- tolower(atac$%s)) before running coembed if you want them merged.",
+        severity, col,
+        paste(rna_vals, collapse=", "), paste(atac_vals, collapse=", "),
+        paste(rna_only, collapse=", "), paste(atac_only, collapse=", "),
+        col, col))
+      any_issue <- TRUE
+    }
+  }
+  if (any_issue && strict) {
+    stop("[coembed] metadata-cols validation failed under strict mode. ",
+         "Either harmonize the values upstream or remove --strict-metadata.")
+  }
+  invisible(any_issue)
+}
+
 binary_search_resolution <- function(obj, n_cells, target_size, max_iter = 8L) {
   r <- seed_resolution(n_cells, target_size)
   lo <- 0.01; hi <- 5.0
@@ -178,12 +237,51 @@ if (is.null(GetAssayData(rna, slot = "counts")) ||
   stop("RNA object has no raw counts. Cannot proceed with NormalizeData.")
 }
 
-message("[coembed] RNA: standard preprocessing (Norm/VF/Scale/PCA/UMAP)")
-rna <- NormalizeData(rna, verbose = FALSE)
-rna <- FindVariableFeatures(rna, verbose = FALSE)
-rna <- ScaleData(rna, verbose = FALSE)
-rna <- RunPCA(rna, npcs = opt$`n-pcs`, verbose = FALSE)
-rna <- RunUMAP(rna, dims = 1:opt$`n-pcs`, verbose = FALSE)
+# Diagnostic snapshot of RNA input — surface what's already there so the
+# user knows what's about to be re-computed (or reused via --reuse-*).
+message(sprintf(
+  "[coembed]   RNA input: %d cells, assays={%s}, reductions={%s}, has_seurat_clusters=%s",
+  ncol(rna),
+  paste(Assays(rna), collapse = ","),
+  paste(names(rna@reductions), collapse = ","),
+  "seurat_clusters" %in% colnames(rna@meta.data)
+))
+
+# Preserve the user's per-modality cluster labels under a non-clobbering
+# name BEFORE we run FindClusters on the joint PCA later. This means
+# coembed@meta.data$rna_input_clusters survives the merge intact, and
+# the user can compare their original RNA-only clustering to the new
+# joint clustering downstream.
+if ("seurat_clusters" %in% colnames(rna@meta.data)) {
+  rna$rna_input_clusters <- as.character(rna$seurat_clusters)
+  message("[coembed]   preserving RNA's existing seurat_clusters as 'rna_input_clusters'")
+}
+
+# Reuse path: skip the expensive standard preprocessing if the user
+# asserts the input is already prepared and the slots/reductions exist.
+rna_has_pca  <- "pca"  %in% names(rna@reductions)
+rna_has_umap <- "umap" %in% names(rna@reductions)
+rna_has_data <- !is.null(GetAssayData(rna, slot = "data")) &&
+                nrow(GetAssayData(rna, slot = "data")) > 0
+rna_has_vf   <- length(VariableFeatures(rna)) > 0
+
+if (opt$`reuse-rna-reductions` && rna_has_pca && rna_has_umap &&
+    rna_has_data && rna_has_vf) {
+  message("[coembed]   --reuse-rna-reductions: keeping existing pca/umap/data/VFs.")
+} else {
+  if (opt$`reuse-rna-reductions`) {
+    message("[coembed]   --reuse-rna-reductions set but RNA object missing prerequisites ",
+            "(pca=", rna_has_pca, ", umap=", rna_has_umap,
+            ", data slot=", rna_has_data, ", variable features=", rna_has_vf,
+            "). Falling back to full preprocessing.")
+  }
+  message("[coembed] RNA: standard preprocessing (Norm/VF/Scale/PCA/UMAP)")
+  rna <- NormalizeData(rna, verbose = FALSE)
+  rna <- FindVariableFeatures(rna, verbose = FALSE)
+  rna <- ScaleData(rna, verbose = FALSE)
+  rna <- RunPCA(rna, npcs = opt$`n-pcs`, verbose = FALSE)
+  rna <- RunUMAP(rna, dims = 1:opt$`n-pcs`, verbose = FALSE)
+}
 rna$assay <- "RNA"
 
 # ------------------------------------------------------------------------
@@ -198,6 +296,42 @@ atac_assay <- pick_atac_assay(atac)
 DefaultAssay(atac) <- atac_assay
 message("[coembed] ATAC: using assay '", atac_assay, "'")
 
+# Diagnostic snapshot.
+message(sprintf(
+  "[coembed]   ATAC input: %d cells, assays={%s}, reductions={%s}, has_seurat_clusters=%s",
+  ncol(atac),
+  paste(Assays(atac), collapse = ","),
+  paste(names(atac@reductions), collapse = ","),
+  "seurat_clusters" %in% colnames(atac@meta.data)
+))
+
+# Some ATAC objects (e.g. those from prior integrate_atac runs, or split
+# multiome objects) already carry an "RNA" assay. We're going to overwrite
+# it with freshly imputed values from TransferData later — surface this
+# loudly so the user isn't surprised that imputation replaces what was
+# there.
+if ("RNA" %in% Assays(atac)) {
+  message("[coembed]   NOTE: ATAC object already carries an 'RNA' assay. ",
+          "It will be REPLACED later by TransferData-imputed values from ",
+          "the RNA reference. If you want to keep the existing values, ",
+          "save them under a different assay name before running this skill.")
+}
+
+# Preserve ATAC's existing seurat_clusters under a non-clobbering name.
+if ("seurat_clusters" %in% colnames(atac@meta.data)) {
+  atac$atac_input_clusters <- as.character(atac$seurat_clusters)
+  message("[coembed]   preserving ATAC's existing seurat_clusters as 'atac_input_clusters'")
+}
+
+# ------------------------------------------------------------------------
+# Cross-input metadata sanity check — catch capitalization / value-set
+# mismatches BEFORE the long-running steps fire.
+# ------------------------------------------------------------------------
+if (length(meta_cols) > 0) {
+  validate_metadata_consistency(rna, atac, meta_cols,
+                                strict = opt$`strict-metadata`)
+}
+
 # Annotation pull for GeneActivity. Signac wants UCSC-style chromosome names
 # and a `genome` attribute on the GRanges; this is what the vignette does.
 ensdb <- load_ensdb(opt$genome)
@@ -207,13 +341,35 @@ seqlevelsStyle(annotations) <- "UCSC"
 genome(annotations) <- opt$genome
 Annotation(atac) <- annotations
 
-message("[coembed] ATAC: TF-IDF / FindTopFeatures / RunSVD / RunUMAP")
-atac <- RunTFIDF(atac, verbose = FALSE)
-atac <- FindTopFeatures(atac, min.cutoff = "q0", verbose = FALSE)
-atac <- RunSVD(atac, verbose = FALSE)
+# Reuse path for ATAC: skip TF-IDF/SVD/UMAP if reductions already there.
+# We accept either umap.atac (the Stuart vignette name) or the bare
+# umap (since some users save it that way) for the existing-UMAP check.
+atac_has_lsi  <- "lsi" %in% names(atac@reductions)
+atac_has_umap <- any(c("umap.atac", "umap") %in% names(atac@reductions))
 lsi_dims <- (opt$`lsi-skip-first` + 1):opt$`n-pcs`
-atac <- RunUMAP(atac, reduction = "lsi", dims = lsi_dims,
-                reduction.name = "umap.atac", verbose = FALSE)
+
+if (opt$`reuse-atac-reductions` && atac_has_lsi && atac_has_umap) {
+  message("[coembed]   --reuse-atac-reductions: keeping existing lsi/umap.")
+  # If the umap reduction is named bare 'umap', alias it to 'umap.atac' so
+  # the pre-merge plot can find it under a stable name. We don't alter the
+  # underlying reduction; just add a name-pointer.
+  if (!"umap.atac" %in% names(atac@reductions) &&
+      "umap" %in% names(atac@reductions)) {
+    atac@reductions[["umap.atac"]] <- atac@reductions[["umap"]]
+  }
+} else {
+  if (opt$`reuse-atac-reductions`) {
+    message("[coembed]   --reuse-atac-reductions set but ATAC object missing ",
+            "prerequisites (lsi=", atac_has_lsi, ", umap=", atac_has_umap,
+            "). Falling back to full preprocessing.")
+  }
+  message("[coembed] ATAC: TF-IDF / FindTopFeatures / RunSVD / RunUMAP")
+  atac <- RunTFIDF(atac, verbose = FALSE)
+  atac <- FindTopFeatures(atac, min.cutoff = "q0", verbose = FALSE)
+  atac <- RunSVD(atac, verbose = FALSE)
+  atac <- RunUMAP(atac, reduction = "lsi", dims = lsi_dims,
+                  reduction.name = "umap.atac", verbose = FALSE)
+}
 atac$assay <- "ATAC"
 
 # ------------------------------------------------------------------------
