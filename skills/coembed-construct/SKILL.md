@@ -129,6 +129,31 @@ These come up in practice on multi-sample 10x datasets. Each is now logged at st
 - **Genome support** — fails loud on unsupported `--genome` values; the EnsDb dispatch table maps human/mouse only.
 - **Metadata-cols sanity** — if a column is in `--metadata-cols` but missing from one input, prints a warning and continues (the merged object will have NA for the missing-side cells in that column).
 
+## Recommended upstream preprocessing conventions
+
+The skill validates a lot of failure modes at startup, but a few conventions on the user-side `.rds` build prevent the worst silent bugs from ever materializing in the first place. Apply these when you generate the per-modality objects (Seurat / Signac scripts that produce `*_scRNA.rds` / `*_scATAC.rds`):
+
+- **Lowercase every metadata-value string before saving the `.rds`.** This is the single biggest unforced-error fix. The D7 dataset shipped with `tissue ∈ {spleen, siIEL}` on RNA but `{Spleen, siIEL}` on ATAC; after `merge()` the column has THREE distinct values (`spleen`, `Spleen`, `siIEL`), and a downstream `pseudobulk-construct --metadata-cols tissue` then creates separate groups for `spleen` and `Spleen` — silently halving the effective sample size of one tissue. The skill catches this at startup with a `WARN: CASE-ONLY mismatch` message, but harmonizing upstream is strictly better than relying on the warning. Idiomatic R:
+  ```r
+  for (col in c("tissue", "genotype", "sample_id", "donor", "batch")) {
+    if (col %in% colnames(obj@meta.data)) {
+      obj[[col]][[1]] <- tolower(as.character(obj[[col]][[1]]))
+    }
+  }
+  saveRDS(obj, "scRNA_clean.rds")
+  ```
+  Apply the same loop to BOTH the RNA and ATAC objects before they ever enter `coembed-construct`. Free-text values that happen to match across modalities (e.g. `"WT"` vs `"wt"`, `"day7"` vs `"Day7"`, `"PBMC"` vs `"pbmc"`) all collapse cleanly under `tolower()` and won't split groups.
+- **Use the SAME column NAME for the same biological concept across RNA + ATAC.** Real example from D7: RNA had `sample_id` ∈ {`siIEL_KO_D7`, …}; ATAC had `library_id` ∈ {`siIEL_KO_D7_CRISPR_18`, …}. Same concept, different column names AND different value formats — neither the metadata-value validator nor `--metadata-cols` can rescue this; they only see what you ask them to compare. Pick one canonical column name (e.g. `sample`) on the upstream pipeline and rename both modalities to match.
+- **Never carry stale path strings across machines.** `Fragments(atac)` embeds the absolute fragments path at object-build time. When a `.rds` ships from HPC to a laptop, the path resolves nowhere. The skill detects this and accepts `--fragments` to rebuild in place — but if you'd rather avoid the runtime kludge, rebuild the Fragment object on the destination machine before saving:
+  ```r
+  fr <- CreateFragmentObject(path = "/local/path/fragments.tsv.gz",
+                             cells = colnames(atac))
+  Fragments(atac[["peaks"]]) <- NULL
+  Fragments(atac[["peaks"]]) <- fr
+  saveRDS(atac, "scATAC_clean.rds")
+  ```
+- **Don't ship a Seurat v5 `.rds` to a v4-pinned env.** The skill detects the `Assay5`-under-Seurat-4 trap at startup and refuses, but you save 30 min by either upgrading the destination env to Seurat ≥ 5.0 OR downgrading the input via `obj[['RNA']] <- as(obj[['RNA']], 'Assay'); saveRDS(...)` BEFORE shipping.
+
 ## When to run this skill vs. pseudobulk-construct directly
 
 | Input | Skill |

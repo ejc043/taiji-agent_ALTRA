@@ -33,6 +33,24 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 - `sc-undetermined` single-cell inputs. If the skill can't tell whether RNA and ATAC are paired (multiome) or separate, it will not guess — it asks the user to clarify, or to provide a `.h5mu` / rename files with an explicit `multiome` / `rna` / `atac` token.
 - `separate-assay` inputs that haven't been co-embedded yet. The skill checks for a transferred-label column in the object's `@meta.data` (default: `predicted.id`, configurable via `--transferred-label-col`) and refuses if it's missing — pointing the user at the Signac integrate_atac workflow first: <https://stuartlab.org/signac/articles/integrate_atac>.
 
+## Upstream metadata convention (REQUIRED for correct stratification)
+
+`--metadata-cols` produces the full cross-product within each cluster, so any value-set inconsistency in those columns silently doubles the group count and halves the per-group sample size. The single most important upstream rule:
+
+- **Lowercase every metadata-value string before saving the `.rds` (or `.h5ad` / `.h5mu`).** `tissue ∈ {spleen, Spleen}` after `merge()` is THREE distinct values, not two — `pseudobulk-construct --metadata-cols tissue` would emit per-cluster groups for `spleen` AND `Spleen` independently, and Taiji's downstream PageRank diffs the wrong cohorts. Idiomatic R, applied to BOTH modalities before they're handed to `coembed-construct`:
+  ```r
+  for (col in c("tissue", "genotype", "sample_id", "donor", "batch")) {
+    if (col %in% colnames(obj@meta.data)) {
+      obj[[col]][[1]] <- tolower(as.character(obj[[col]][[1]]))
+    }
+  }
+  saveRDS(obj, "scRNA_clean.rds")
+  ```
+  This collapses `WT`/`wt`, `Day7`/`day7`, `Spleen`/`spleen` cleanly. Free-text fields you don't pass through `--metadata-cols` are unaffected.
+- **Use the same column NAME on both modalities for the same biological concept.** RNA carrying `sample_id` while ATAC carries `library_id` for the same samples cannot be reconciled by the metadata-value validator — pick one canonical name (e.g. `sample`) at the upstream-pipeline level.
+
+`coembed-construct` validates `--metadata-cols` value sets across the RNA + ATAC inputs and emits `WARN: CASE-ONLY mismatch` (with a `tolower()` copy-paste fix) when it finds the convention violated, but the warning is a fail-safe — the cleanup belongs upstream. See `skills/coembed-construct/SKILL.md` for the full preprocessing convention list.
+
 ## Inputs
 
 | Flag                        | Purpose                                                                               |

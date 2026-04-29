@@ -393,6 +393,24 @@ These are load-bearing — preserve them when adding new skills or extending exi
 - **Always cite limitations.** Eunice prefers explicit "this heuristic can fail when X" notes over silent confidence.
 - **Output formats designed for downstream chaining.** When skill A's output feeds skill B, A emits exactly what B expects with no transformation step in between.
 
+## Single-cell preprocessing conventions (project-wide)
+
+These apply to every `.rds` / `.h5ad` / `.h5mu` that flows into `coembed-construct` or `pseudobulk-construct`. The skills detect violations at startup and warn, but harmonizing upstream is strictly better than relying on the runtime warning — it eliminates the failure class entirely instead of just surfacing it.
+
+- **Lowercase every metadata-value string before saving.** This is the single highest-value cleanup. The D7 dataset shipped with `tissue ∈ {spleen, siIEL}` on RNA and `tissue ∈ {Spleen, siIEL}` on ATAC; after `merge()` the column has THREE distinct values and a downstream `--metadata-cols tissue` cross-product creates separate groups for `spleen` vs `Spleen`, halving the spleen-cohort effective N with neither group flagged as wrong. The `coembed-construct` skill catches this with a `WARN: CASE-ONLY mismatch` message — but the user-side fix is still required to get a clean run. Idiomatic R, applied to BOTH per-modality objects before they enter the pipeline:
+  ```r
+  for (col in c("tissue", "genotype", "sample_id", "donor", "batch")) {
+    if (col %in% colnames(obj@meta.data)) {
+      obj[[col]][[1]] <- tolower(as.character(obj[[col]][[1]]))
+    }
+  }
+  saveRDS(obj, "scRNA_clean.rds")
+  ```
+  This also collapses `WT`/`wt`, `Day7`/`day7`, `PBMC`/`pbmc`, etc. Free-text columns you don't pass through `--metadata-cols` are unaffected.
+- **Use the same metadata column NAME for the same biological concept across modalities.** The skill validators only see what you ask them to compare. `sample_id` on RNA + `library_id` on ATAC for the same biological samples is invisible to `validate_metadata_consistency`. Pick a canonical name (`sample`, `donor`, `batch`) and use it on both.
+- **Rebuild stale ChromatinAssay fragment paths before shipping `.rds` across machines.** `Fragments(atac)` embeds an absolute path at object-build time; on a destination machine the path resolves nowhere. The skill accepts `--fragments` as a runtime override, but the cleaner fix is to rebuild the Fragment handle on the destination machine before saving. See the `coembed-construct` SKILL.md "Recommended upstream preprocessing conventions" for the snippet.
+- **Match the Seurat version of the input `.rds` to the env that consumes it.** Saving in v5 then loading under v4 silently produces an empty `Assays()` and crashes the pipeline ~10 min in. The skill refuses up-front under v4-with-v5-input, but the user-side fix (upgrade env or downgrade input via `as(obj[['RNA']], 'Assay')`) is preferable.
+
 ## Memory system
 
 Persistent memory at `/sessions/quirky-festive-mayer/mnt/.auto-memory/`. Key files:
