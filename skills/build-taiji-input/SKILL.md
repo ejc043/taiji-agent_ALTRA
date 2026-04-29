@@ -41,6 +41,8 @@ Two things, plus a genome flag:
 
 A template CSV lives at `assets/samples_template.csv`. The genome registry lives at `assets/genomes.yml` — **users of this skill at a new site must edit this file once** to point at their local reference paths. The example values are UCSD/TCF1-project paths and will not work on other clusters.
 
+Per-run convention: when this skill is being invoked from a `runs/<name>/` workspace, keep `samples.csv` (and any other human-authored scripts for that run) under `runs/<name>/code/`. `bin/run-taiji.sh` resolves it from there automatically. Anything outside `code/` in a run dir is generated and gitignored; `code/` is the only place that's version-controlled per run.
+
 ## How to run it
 
 The skill bundles a single script. Invoke it with:

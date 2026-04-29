@@ -41,7 +41,7 @@ log = TaijiLog.start(
     work_dir=".",
     genome="hg38",
     reference_paths={"fasta": "/db/hg38.fa", "gtf": "/db/hg38.gtf",
-                     "meme":  "/db/hocomoco_v11.meme"},
+                     "meme":  "/db/cisbp_human_2.meme"},
     note="CHEM280 WI26 demo dataset",
 )
 

@@ -23,7 +23,7 @@
                        (any machine)──▶║  --genome hg38       ║──▶ dependencies_data/hg38/
                                        ║  --output ...        ║       ├── genome.fa
                                        ║  --update-genomes-yml║       ├── genes.gtf
-                                       ╚══════════════════════╝       └── HOCOMOCOv11_human.meme
+                                       ╚══════════════════════╝       └── cisbp_human_2.meme  (vendored)
 
                                        ╔══════════════════════╗
                                        ║  install-taiji.sh    ║──▶ binaries/
@@ -170,7 +170,7 @@ If `GeneRanks.tsv` exists with ~765 rows AND stderr's last line is `Program fini
 | # | Skill | What it does | Where it can run |
 |---|-------|--------------|------------------|
 | 1 | `detect-dataset-type` | Classify directory as bulk / SC / mixed / unknown; sub-classify SC modality (multiome / separate-assay / undetermined) | sandbox or Mac |
-| 2 | `fetch-references` | Idempotent per-genome download (FASTA + GTF + MEME) from GENCODE/EMBL-EBI + HOCOMOCO; size-tolerance check; optional samtools faidx | Mac (sandbox egress blocks the hosts) |
+| 2 | `fetch-references` | Idempotent per-genome staging (FASTA + GTF from GENCODE/EMBL-EBI; MEME from vendored CIS-BP at `cisbp_database/`); size-tolerance check; optional samtools faidx | Mac (sandbox egress blocks the hosts) |
 | 3 | `build-taiji-input` | Walk data dir + samples manifest → produce Active + active_metadata xlsx for bulk Taiji | sandbox or Mac |
 | 4 | `pseudobulk-construct` | Bridge SC objects (.rds/.h5ad/.h5mu) to bulk-Taiji inputs via Seurat WNN clustering + per-cluster MACS3 peak calling | Mac (R + MACS3 not in sandbox) |
 | 5 | `taiji-runner` | Per-sample Taiji 1.3.0 orchestrator: split xlsx → per-sample TSVs/configs → invoke binary per sample → validate `GeneRanks.tsv` presence | Mac (Taiji binary x86_64 only) |

@@ -44,9 +44,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-# Motif sources supported by the manifest. New ones added as `motif_<key>:`
-# entries in reference_manifest.yml. Default is set by --motif-source.
-MOTIF_SOURCES = ("cisbp", "hocomoco")
+# Motif source. CIS-BP is the project's only supported source — vendored at
+# cisbp_database/ and keyed by TF gene symbol so Taiji's GeneRanks output is
+# directly interpretable. HOCOMOCO support was removed (verified to give
+# materially different output on the RA/OA reference; see CLAUDE.md).
+MOTIF_SOURCES = ("cisbp",)
 DEFAULT_MOTIF_SOURCE = "cisbp"
 
 try:
@@ -290,9 +292,10 @@ def _resolve_motif_source(files_spec: dict, motif_source: str) -> dict:
     """Filter the per-genome files dict so only the chosen motif source
     remains, renamed to the bare `motif` key for downstream reporting.
 
-    The manifest carries parallel `motif_cisbp:` and `motif_hocomoco:` blocks
-    per genome; this picks one and discards the other so the rest of the
-    pipeline doesn't have to know about source-specific keys.
+    The manifest carries `motif_cisbp:` blocks per genome (CIS-BP is the
+    only supported source); this normalizes the source-specific key to the
+    bare `motif` key so the rest of the pipeline doesn't have to know
+    about source variants.
     """
     out: dict = {}
     chosen_key = f"motif_{motif_source}"
@@ -606,11 +609,9 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                         "with the resolved fasta/gtf paths.")
     p.add_argument("--motif-source", choices=list(MOTIF_SOURCES),
                    default=DEFAULT_MOTIF_SOURCE,
-                   help=f"Which motif database to use. Default: "
-                        f"{DEFAULT_MOTIF_SOURCE} (CIS-BP — vendored at "
-                        "cisbp_database/, TF-gene-symbol primary IDs, no "
-                        "download). Alternative: hocomoco (HOCOMOCO v11, "
-                        "downloaded from autosome.org at fetch time).")
+                   help="Motif database. Only 'cisbp' is supported "
+                        "(CIS-BP — vendored at cisbp_database/, "
+                        "TF-gene-symbol primary IDs, no network).")
     p.add_argument("--json", action="store_true",
                    help="Print machine-readable JSON report instead of text.")
     return p.parse_args(argv)

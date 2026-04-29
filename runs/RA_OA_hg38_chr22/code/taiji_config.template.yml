@@ -1,0 +1,26 @@
+# Taiji per-sample config — hg38, pre-quantified bulk inputs (no alignment).
+# Three required placeholders are filled by taiji-runner per sample:
+#   [insert_input_filepath_here]   -> Input/<sample>_input/<sample>_input.tsv
+#   [insert_output_directory_here] -> Output/Partial/<sample>_output/
+#   [insert_genome_filepath_here]  -> dependencies_data/hg38/genome.fa
+# ${REPO_ROOT} is substituted by the runner from --repo-root.
+#
+# Motif file: cisbp_human_2.meme (4443 PWMs, full CIS-BP). This is the project's
+# canonical motif source — gene-symbol-keyed so GeneRanks output is directly
+# interpretable, and verified to match the reference Nextflow run on the
+# RA/OA hg38 chr22 dataset (Spearman 0.97, RMSE ~4e-5).
+
+input: "[insert_input_filepath_here]"
+output_dir: "[insert_output_directory_here]"
+genome: "[insert_genome_filepath_here]"
+
+annotation: "${REPO_ROOT}/dependencies_data/hg38/genes.gtf"
+motif_file: "${REPO_ROOT}/cisbp_database/cisbp_human_2.meme"
+
+tmp_dir: "${REPO_ROOT}/tmp"
+
+resource:
+    ATAC_Find_TFBS_Union:
+        memory: 10
+    ATAC_Get_TFBS:
+        memory: 10

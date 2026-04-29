@@ -20,32 +20,19 @@ Where `<species>` is `human` or `mouse` and `<N>` is the release tag (e.g. `45`,
   - `mm10` → GENCODE M25 (released Apr 2020, the last release on GRCm38). Newer releases (M26+) are on GRCm39 only.
   - `mm39` → GENCODE M34 (released Mar 2024).
 
-### HOCOMOCO v11 MEME — autosome.org
+### CIS-BP MEME — vendored at `cisbp_database/`
 
-URL pattern:
+Files (all checked into the repo, no network needed):
 
-```
-https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/<SPECIES>/mono/HOCOMOCOv11_full_<SPECIES>_mono_meme_format.meme
-```
+- **Human:** `cisbp_database/cisbp_human_2.meme` — full CIS-BP, 4443 PWMs, gene-symbol primary IDs (e.g. `MOTIF POU3F2`). This is the **canonical** human motif file for the project — verified against a reference Nextflow run on the RA/OA hg38 chr22 dataset (Spearman 0.97, RMSE ~4e-5; identical TF set, top-50 100% match).
+- **Mouse:** `cisbp_database/cisBP_mouse.meme`.
+- **Legacy human:** `cisbp_database/cisBP_human.meme` (1882 PWMs) is also vendored for reproducing older runs but is not the default.
 
-Where `<SPECIES>` is `HUMAN` or `MOUSE`.
+**Why CIS-BP and not HOCOMOCO or JASPAR?**
 
-- **Pros:** Stable URL since v11 release in 2018; small files (~5 MB); MEME format is the canonical input for TF-binding-motif scanning tools (FIMO, MEME-suite, Taiji's regulatory step).
-- **Cons:** The autosome.org host occasionally hiccups; if that happens, the same files mirror at `https://opera.autosome.org/...` for a fallback path.
-- **Why HOCOMOCO and not CIS-BP or JASPAR?** All three are valid choices:
-  - **HOCOMOCO** (this skill's default): human-curated; high-confidence motifs only; smaller; widely used in regulatory-network work.
-  - **JASPAR**: also human-curated; broader species coverage; MEME format available at `https://jaspar.genereg.net/download/data/<release>/JASPAR<release>_CORE_<species>_non-redundant_pfms_meme.txt`.
-  - **CIS-BP**: largest motif catalog (includes inferred motifs); requires picking species + format from a UI rather than scripted download — awkward for an idempotent installer.
-
-If you want JASPAR instead, copy `reference_manifest.yml` and replace the `motif:` URL. Reasonable JASPAR replacement for hg38:
-
-```yaml
-motif:
-  url:    https://jaspar.genereg.net/download/data/2024/CORE/JASPAR2024_CORE_vertebrates_non-redundant_pfms_meme.txt
-  target: hg38/JASPAR2024_vertebrates.meme
-  gunzip: false
-  approx_size_mb: 3
-```
+- **CIS-BP** is the project's only supported source. Primary IDs are TF gene symbols, so Taiji's `GeneRanks.tsv` is directly interpretable without any post-hoc motif-ID-to-gene mapping. CIS-BP also has the broadest TF coverage (~4400 vs HOCOMOCO's ~770 for human), which matters when downstream analyses ask whether a specific TF is in the network.
+- **HOCOMOCO** was the prior default but was removed: switching motif sources changes both the TF set and PageRank values, so locking to one source keeps cross-run results comparable. Reproductions of the reference Nextflow run only match when CIS-BP is used.
+- **JASPAR** is also human-curated and a reasonable alternative; if a future project needs JASPAR, copy `reference_manifest.yml` and add a `motif_jaspar:` block plus restore the `--motif-source` choices in `fetch.py`.
 
 ## Alternative sources (if primaries are unreachable)
 
@@ -55,7 +42,7 @@ motif:
 | GENCODE GTF      | same                           | same                                                       |
 | Genome FASTA     | (GENCODE primary assembly)     | UCSC: `https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz` (chromosome ordering differs slightly) |
 | Annotation GTF   | (GENCODE)                      | Ensembl: `https://ftp.ensembl.org/pub/release-110/gtf/homo_sapiens/Homo_sapiens.GRCh38.110.chr.gtf.gz` (ID conventions differ) |
-| MEME motifs      | HOCOMOCO v11 autosome.org      | JASPAR 2024 (URL above); CIS-BP (manual download)         |
+| MEME motifs      | CIS-BP vendored at `cisbp_database/` | JASPAR 2024 (would need a manifest fork; not currently wired up) |
 
 If you hot-swap a primary URL, also remember to update `approx_size_mb` in the manifest — UCSC's `hg38.fa.gz` is ~900 MB compressed but unzips to ~3.1 GB, which is close enough to GENCODE's ~3.0 GB to satisfy the ±5% tolerance, but Ensembl GTF is noticeably smaller than GENCODE's.
 

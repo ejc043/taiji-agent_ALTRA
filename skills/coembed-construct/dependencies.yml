@@ -20,8 +20,20 @@ r_packages:
   - {name: Signac,         min_version: "1.12", source: "bioconda",
      conda_pkg: "r-signac"}    # bioconda packages it as r-signac, NOT bioconductor-signac
   - {name: GenomicRanges,                       source: "bioconda"}
+  # GenomeInfoDb provides the `seqlevelsStyle<-` assignment generic the skill
+  # uses to flip EnsDb chromosomes to UCSC style ("1" -> "chr1"). Pulled in
+  # transitively by GenomicRanges but we attach it explicitly because the
+  # assignment form isn't always re-exported under suppressPackageStartupMessages.
+  - {name: GenomeInfoDb,                        source: "bioconda"}
   - {name: optparse,                            source: "conda"}
   - {name: jsonlite,                            source: "conda"}
+  # biovizBase is a transitive Bioconductor dep of Signac::GetGRangesFromEnsDb.
+  # Signac calls into biovizBase::crunch() to extract gene/transcript ranges
+  # from an EnsDb. Without it the call fails with "Please install biovizBase"
+  # ~10 min into the pipeline (right when GeneActivity runs).
+  - {name: biovizBase,            source: "bioconda",
+     conda_pkg: "bioconductor-biovizbase",
+     required_for: "Signac::GetGRangesFromEnsDb (annotation extraction)"}
   # EnsDb annotations — needed for Signac's GeneActivity (maps ATAC peaks to
   # gene bodies + 2 kb upstream regions). One per species.
   - {name: EnsDb.Hsapiens.v86,    source: "bioconda",

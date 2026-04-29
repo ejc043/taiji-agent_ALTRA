@@ -62,7 +62,7 @@ output_dir: [insert_output_directory_here]
 genome:     [insert_genome_filepath_here]
 tmp_dir:    /tmp/taiji_RA_OA_chr22
 annotation: ${REPO_ROOT}/dependencies_data/hg38/genes.gtf
-motif_file: ${REPO_ROOT}/dependencies_data/hg38/HOCOMOCOv11_human.meme
+motif_file: ${REPO_ROOT}/cisbp_database/cisbp_human_2.meme
 ```
 
 The runner produces (for sample RA_11 with REPO_ROOT=/path/to/agent):
@@ -73,7 +73,7 @@ output_dir: /path/to/agent/runs/<run_dir>/Output/Partial/RA_11_output
 genome:     /path/to/agent/dependencies_data/hg38/genome.fa  # from active_metadata.vcf_Location[RA_11]
 tmp_dir:    /tmp/taiji_RA_OA_chr22
 annotation: /path/to/agent/dependencies_data/hg38/genes.gtf
-motif_file: /path/to/agent/dependencies_data/hg38/HOCOMOCOv11_human.meme
+motif_file: /path/to/agent/cisbp_database/cisbp_human_2.meme
 ```
 
 ## taiji_config_files.txt

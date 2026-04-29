@@ -2,29 +2,28 @@
 # Taiji-agent pipeline needs per genome. Read by fetch.py.
 #
 # For each genome:
-#   - fasta:           primary-assembly genome FASTA (gunzipped on disk)
-#   - gtf:             GENCODE annotation (gunzipped on disk)
-#   - motif_cisbp:     CIS-BP MEME motif file (DEFAULT). VENDORED in this
-#                      repo at cisbp_database/cisBP_{human,mouse}.meme so
-#                      no external download is needed. CIS-BP aggregates
-#                      JASPAR + TRANSFAC + ENCODE + SELEX-seq + PBMs and
-#                      keys motifs by TF gene symbol as the primary ID
-#                      (e.g. `MOTIF POU3F2+M5734_1.02+D`) — so Taiji's
-#                      GeneRanks output is gene-name interpretable.
-#   - motif_hocomoco:  HOCOMOCO v11 MEME motif file (alternative, opt-in
-#                      via --motif-source hocomoco). Downloaded from
-#                      autosome.org at fetch time. Single source, slightly
-#                      narrower TF coverage but immutable URL.
+#   - fasta:          primary-assembly genome FASTA (gunzipped on disk)
+#   - gtf:            GENCODE annotation (gunzipped on disk)
+#   - motif_cisbp:    CIS-BP MEME motif file. VENDORED in this repo at
+#                     cisbp_database/ so no external download is needed.
+#                     CIS-BP aggregates JASPAR + TRANSFAC + ENCODE +
+#                     SELEX-seq + PBMs and keys motifs by TF gene symbol
+#                     as the primary ID, so Taiji's GeneRanks output is
+#                     gene-name-interpretable.
+#                     - Human:  cisbp_human_2.meme (4443 PWMs, full CIS-BP)
+#                       — verified to match the reference Nextflow run
+#                       on the RA/OA hg38 chr22 dataset (Spearman 0.97,
+#                       RMSE ~4e-5).
+#                     - Mouse:  cisBP_mouse.meme
 #   - build_fai (optional flag on fasta): run samtools faidx after download
 #
-# fetch.py picks ONE motif source per run via --motif-source (default cisbp)
-# and creates a stable <genome>/motifs.meme symlink that Taiji templates
-# reference, so switching motif sources doesn't require template edits.
+# CIS-BP is the only supported motif source. HOCOMOCO support was removed
+# after verification showed it produces materially different output from
+# the reference run.
 #
 # Sources:
 #   - GENCODE FASTA + GTF via EMBL-EBI mirror (release-versioned, immutable)
 #   - CIS-BP MEME files vendored under cisbp_database/ (no network)
-#   - HOCOMOCO v11 from autosome.org (the canonical host since 2018)
 #
 # Vendored entries declare `vendored_path` (relative to repo root) and are
 # copied into <output_dir>/<genome>/<target> at fetch time — no network.
@@ -32,7 +31,7 @@
 # Targets are written under <output_dir>/<genome>/<file>.
 
 hg38:
-  description: "Human GRCh38 + GENCODE v45 + CIS-BP 2.00 (default) / HOCOMOCO v11"
+  description: "Human GRCh38 + GENCODE v45 + CIS-BP (cisbp_human_2.meme, 4443 PWMs)"
   files:
     fasta:
       url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_45/GRCh38.primary_assembly.genome.fa.gz
@@ -46,18 +45,13 @@ hg38:
       gunzip: true
       approx_size_mb: 1500
     motif_cisbp:
-      vendored_path: cisbp_database/cisBP_human.meme
-      target: hg38/cisBP_human.meme
+      vendored_path: cisbp_database/cisbp_human_2.meme
+      target: hg38/cisbp_human_2.meme
       gunzip: false
-      approx_size_mb: 1.4
-    motif_hocomoco:
-      url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/HUMAN/mono/HOCOMOCOv11_full_HUMAN_mono_meme_format.meme
-      target: hg38/HOCOMOCOv11_human.meme
-      gunzip: false
-      approx_size_mb: 0.7
+      approx_size_mb: 3.5
 
 hg19:
-  description: "Human GRCh37 + GENCODE v19 (frozen) + CIS-BP 2.00 (default) / HOCOMOCO v11"
+  description: "Human GRCh37 + GENCODE v19 (frozen) + CIS-BP (cisbp_human_2.meme, 4443 PWMs)"
   files:
     fasta:
       url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_human/release_19/GRCh37.p13.genome.fa.gz
@@ -71,18 +65,13 @@ hg19:
       gunzip: true
       approx_size_mb: 1300
     motif_cisbp:
-      vendored_path: cisbp_database/cisBP_human.meme
-      target: hg19/cisBP_human.meme
+      vendored_path: cisbp_database/cisbp_human_2.meme
+      target: hg19/cisbp_human_2.meme
       gunzip: false
-      approx_size_mb: 1.4
-    motif_hocomoco:
-      url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/HUMAN/mono/HOCOMOCOv11_full_HUMAN_mono_meme_format.meme
-      target: hg19/HOCOMOCOv11_human.meme
-      gunzip: false
-      approx_size_mb: 0.7
+      approx_size_mb: 3.5
 
 mm10:
-  description: "Mouse GRCm38 + GENCODE M25 (last on GRCm38) + CIS-BP 2.00 (default) / HOCOMOCO v11"
+  description: "Mouse GRCm38 + GENCODE M25 (last on GRCm38) + CIS-BP"
   files:
     fasta:
       url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M25/GRCm38.primary_assembly.genome.fa.gz
@@ -100,14 +89,9 @@ mm10:
       target: mm10/cisBP_mouse.meme
       gunzip: false
       approx_size_mb: 0.7
-    motif_hocomoco:
-      url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/MOUSE/mono/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme
-      target: mm10/HOCOMOCOv11_mouse.meme
-      gunzip: false
-      approx_size_mb: 0.7
 
 mm39:
-  description: "Mouse GRCm39 + GENCODE M34 + CIS-BP 2.00 (default) / HOCOMOCO v11"
+  description: "Mouse GRCm39 + GENCODE M34 + CIS-BP"
   files:
     fasta:
       url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M34/GRCm39.primary_assembly.genome.fa.gz
@@ -123,10 +107,5 @@ mm39:
     motif_cisbp:
       vendored_path: cisbp_database/cisBP_mouse.meme
       target: mm39/cisBP_mouse.meme
-      gunzip: false
-      approx_size_mb: 0.7
-    motif_hocomoco:
-      url:    https://hocomoco11.autosome.org/final_bundle/hocomoco11/full/MOUSE/mono/HOCOMOCOv11_full_MOUSE_mono_meme_format.meme
-      target: mm39/HOCOMOCOv11_mouse.meme
       gunzip: false
       approx_size_mb: 0.7

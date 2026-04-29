@@ -59,13 +59,26 @@ python skills/fetch-references/scripts/fetch.py \
 
 `bin/install.sh` registers the env's parent directory in your solver's `envs_dirs` config at install time, so `<solver> activate taiji-agent` works in any future shell — even on managed clusters where the env lives under a non-default prefix (e.g. `/stg3/data1/eunice/.local/share/mamba/envs/taiji-agent`). If the by-name form ever fails (e.g. you installed the env before this auto-registration was added, or the config write was blocked), look up the prefix with `micromamba env list` and activate by full path.
 
-Downloads to `dependencies_data/hg38/`:
-- `genome.fa` (GENCODE primary assembly, ~3 GB uncompressed)
-- `genes.gtf` (GENCODE v45)
-- `cisBP_human.meme` (TF binding motifs — copied from the in-repo `cisbp_database/`; no external download)
-- `motifs.meme` symlink → the chosen motif file (Taiji templates reference this stable path)
+Downloads to `dependencies_data/<genome>/`:
+- `genome.fa` (GENCODE primary assembly)
+- `genes.gtf` (GENCODE annotation)
+- `<species>.meme` (CIS-BP TF binding motifs — copied from the in-repo `cisbp_database/`; no external download)
+- `motifs.meme` symlink → the staged motif file (Taiji templates reference this stable path)
 
-Motif source defaults to **CIS-BP** (vendored at `cisbp_database/`, TF gene symbols as primary IDs, no network). Pass `--motif-source hocomoco` to download HOCOMOCO v11 from autosome.org instead.
+#### Supported genome versions
+
+`--genome` accepts one of the four builds below. Versions are pinned in `skills/fetch-references/scripts/reference_manifest.yml`; bump them deliberately rather than chasing the rolling latest.
+
+| Tag    | Species | Assembly | GENCODE annotation | Motif file (CIS-BP, vendored) |
+|--------|---------|----------|--------------------|-------------------------------|
+| `hg38` | Human   | GRCh38 (primary assembly) | v45 (Mar 2024) | `cisbp_human_2.meme` (4443 PWMs, full CIS-BP) |
+| `hg19` | Human   | GRCh37.p13                | v19 (Feb 2014, frozen — last GENCODE release on GRCh37) | `cisbp_human_2.meme` |
+| `mm10` | Mouse   | GRCm38 (primary assembly) | M25 (Apr 2020, last GENCODE release on GRCm38) | `cisBP_mouse.meme` |
+| `mm39` | Mouse   | GRCm39 (primary assembly) | M34 (Mar 2024) | `cisBP_mouse.meme` |
+
+List the same set at runtime with `python skills/fetch-references/scripts/fetch.py --list`. Add a new genome by editing `reference_manifest.yml` (schema is documented at the top of that file) — no code change required.
+
+The motif source is **CIS-BP** (vendored at `cisbp_database/`, TF gene symbols as primary IDs, no network). Human runs use `cisbp_human_2.meme` — verified to match the reference Nextflow run on the RA/OA hg38 chr22 dataset (Spearman 0.97, RMSE ~4e-5). HOCOMOCO is not supported — switching motif sources changes both TF coverage and PageRank values, so locking to one source keeps cross-run results comparable.
 
 Idempotent — files within ±5% of expected size are skipped. Pass `--check` to verify without downloading. Pass `--force` to re-fetch.
 
@@ -227,7 +240,7 @@ taiji-agent/
 │   └── doctor.sh                   --profile filter; verifies every dep across skills
 ├── skills/                         six production skills (see CLAUDE.md for catalog)
 │   ├── detect-dataset-type/        classifies bulk/SC/mixed; SC sub-modality
-│   ├── fetch-references/           idempotent GENCODE + HOCOMOCO downloader
+│   ├── fetch-references/           idempotent GENCODE downloader + CIS-BP staging
 │   ├── build-taiji-input/          produces Taiji input xlsx
 │   ├── pseudobulk-construct/       SC → bulk-Taiji bridge (Seurat WNN + per-cluster MACS3)
 │   ├── taiji-runner/               per-sample Taiji 1.3.0 orchestrator

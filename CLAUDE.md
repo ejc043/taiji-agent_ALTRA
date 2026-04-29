@@ -188,7 +188,7 @@ python skills/workflow-log/scripts/log.py finalize --status success
 
 ### 5. `fetch-references` — per-genome reference-data downloader
 
-**Purpose:** Idempotently download the reference data Taiji needs (FASTA + GTF + MEME motif file) from stable upstream hosts (GENCODE via EMBL-EBI mirror; HOCOMOCO v11 via autosome.org) into `<output_dir>/dependencies_data/`. Reads a single `reference_manifest.yml` declaring URLs, target paths, gunzip flags, and approximate uncompressed sizes per genome.
+**Purpose:** Idempotently stage the reference data Taiji needs into `<output_dir>/dependencies_data/`. FASTA + GTF are downloaded from GENCODE via the EMBL-EBI mirror; the MEME motif file is **CIS-BP** (vendored at `cisbp_database/`, no network — `cisbp_human_2.meme` for human, `cisBP_mouse.meme` for mouse). Reads a single `reference_manifest.yml` declaring URLs, target paths, gunzip flags, and approximate uncompressed sizes per genome. **HOCOMOCO is not supported** — locking the project to a single motif source keeps PageRank values comparable across runs.
 
 **Genomes available out of the box:** `hg38` (GENCODE v45), `hg19` (GENCODE v19), `mm10` (GENCODE M25), `mm39` (GENCODE M34). Add new ones by editing `scripts/reference_manifest.yml`.
 
@@ -238,7 +238,7 @@ log/<sample>.taiji.{stdout,stderr}          # per-sample stream capture
 **Verified Taiji 1.3.0 output schema** (per validated RA_11 run):
 ```
 Output/Partial/<sample>_output/
-├── GeneRanks.tsv               # headline output: per-TF PageRank score (765 rows for HOCOMOCO v11 human)
+├── GeneRanks.tsv               # headline output: per-TF PageRank score (~1100 rows for cisbp_human_2.meme on hg38)
 ├── GeneRanks_PValues.tsv       # paired p-values for each TF rank
 ├── sciflow.db                  # workflow state DB (presence = clean checkpoint)
 ├── Network/<sample>/

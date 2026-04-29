@@ -1,12 +1,14 @@
 binaries/
 dependencies_data/
 data/
+runs/Archive/
 runs/*/Output/
 runs/*/Input/
 runs/*/log/
 runs/*/taiji_config.yml
 runs/*/taiji_input.xlsx
 runs/*/taiji_config_files.txt
+seurat_single_cell_data/
 log/
 tmp/
 __pycache__/

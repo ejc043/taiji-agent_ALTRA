@@ -85,12 +85,22 @@ PARALLEL="${PARALLEL:-1}"
 
 RUN_DIR="$(cd "$RUN_DIR" && pwd)"
 [[ -d "$RUN_DIR" ]] || { echo "ERROR: run dir does not exist: $RUN_DIR" >&2; exit 2; }
-[[ -f "$RUN_DIR/samples.csv" ]] || { echo "ERROR: $RUN_DIR/samples.csv missing" >&2; exit 2; }
-[[ -f "$RUN_DIR/taiji_config.template.yml" ]] || \
-  { echo "ERROR: $RUN_DIR/taiji_config.template.yml missing" >&2; exit 2; }
+
+# Resolve samples.csv + taiji_config.template.yml. Canonical location is
+# <run_dir>/code/; flat layout (<run_dir>/...) is accepted for back-compat.
+if   [[ -f "$RUN_DIR/code/samples.csv" ]]; then SAMPLES_CSV="$RUN_DIR/code/samples.csv"
+elif [[ -f "$RUN_DIR/samples.csv"      ]]; then SAMPLES_CSV="$RUN_DIR/samples.csv"
+else echo "ERROR: samples.csv missing (looked in $RUN_DIR/code/ and $RUN_DIR/)" >&2; exit 2
+fi
+if   [[ -f "$RUN_DIR/code/taiji_config.template.yml" ]]; then TEMPLATE_YML="$RUN_DIR/code/taiji_config.template.yml"
+elif [[ -f "$RUN_DIR/taiji_config.template.yml"      ]]; then TEMPLATE_YML="$RUN_DIR/taiji_config.template.yml"
+else echo "ERROR: taiji_config.template.yml missing (looked in $RUN_DIR/code/ and $RUN_DIR/)" >&2; exit 2
+fi
 
 echo "[run-taiji] REPO_ROOT=$REPO_ROOT"
 echo "[run-taiji] RUN_DIR=$RUN_DIR"
+echo "[run-taiji] samples=$SAMPLES_CSV"
+echo "[run-taiji] template=$TEMPLATE_YML"
 echo "[run-taiji] runner args: ${EXTRA_RUNNER_ARGS[*]}"
 
 # ---- Step 1: pick the binary --------------------------------------------
@@ -138,7 +148,7 @@ command -v "$PYTHON" >/dev/null 2>&1 || { echo "ERROR: $PYTHON not on PATH" >&2;
 echo
 echo "[run-taiji] regenerating $RUN_DIR/taiji_input.xlsx ..."
 "$PYTHON" "$REPO_ROOT/skills/build-taiji-input/scripts/build_taiji_input.py" \
-  --samples  "$RUN_DIR/samples.csv" \
+  --samples  "$SAMPLES_CSV" \
   --data-dir "$REPO_ROOT/data/data" \
   --genome   hg38 \
   --rna-pattern  '{group}_RNA.tsv' \
@@ -161,7 +171,7 @@ fi
 # ---- Step 4: start workflow-log -----------------------------------------
 
 LOG_PY="$REPO_ROOT/skills/workflow-log/scripts/log.py"
-REF_JSON=$(printf '{"fasta":"%s/dependencies_data/hg38/genome.fa","gtf":"%s/dependencies_data/hg38/genes.gtf","motif":"%s/dependencies_data/hg38/HOCOMOCOv11_human.meme"}' \
+REF_JSON=$(printf '{"fasta":"%s/dependencies_data/hg38/genome.fa","gtf":"%s/dependencies_data/hg38/genes.gtf","motif":"%s/cisbp_database/cisbp_human_2.meme"}' \
   "$REPO_ROOT" "$REPO_ROOT" "$REPO_ROOT")
 
 echo
@@ -195,7 +205,7 @@ RUNNER_PY="$REPO_ROOT/skills/taiji-runner/scripts/run_taiji.py"
 
 RUNNER_ARGS=(
   --xlsx     "$RUN_DIR/taiji_input.xlsx"
-  --template "$RUN_DIR/taiji_config.template.yml"
+  --template "$TEMPLATE_YML"
   --run-dir  "$RUN_DIR"
   --binary   "$BINARY"
   --repo-root "$REPO_ROOT"

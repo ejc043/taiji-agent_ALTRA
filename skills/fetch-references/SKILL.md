@@ -1,6 +1,6 @@
 ---
 name: fetch-references
-description: Idempotently download the per-genome reference data Taiji needs — primary-assembly FASTA + GENCODE GTF + HOCOMOCO MEME motif file — from stable upstream hosts (EMBL-EBI for GENCODE, autosome.org for HOCOMOCO) into <work_dir>/dependencies_data/. Read URL specs from a single reference_manifest.yml, skip files that already exist with the right size, gunzip on the fly, optionally `samtools faidx` the FASTA, and optionally rewrite skills/build-taiji-input/assets/genomes.yml to point at the downloaded files. Trigger on phrases like "download genome", "fetch reference data", "get the FASTA", "stage the GTF", "where do I get HOCOMOCO", "download MEME motif file", "set up reference data for Taiji", or anywhere the user is missing genome.fa / genes.gtf / *.meme before running Taiji.
+description: Idempotently stage the per-genome reference data Taiji needs — primary-assembly FASTA + GENCODE GTF (downloaded from EMBL-EBI) + CIS-BP MEME motif file (vendored at cisbp_database/) — into <work_dir>/dependencies_data/. Read URL specs from a single reference_manifest.yml, skip files that already exist with the right size, gunzip on the fly, optionally `samtools faidx` the FASTA, and optionally rewrite skills/build-taiji-input/assets/genomes.yml to point at the staged files. Trigger on phrases like "download genome", "fetch reference data", "get the FASTA", "stage the GTF", "set up reference data for Taiji", or anywhere the user is missing genome.fa / genes.gtf / *.meme before running Taiji.
 ---
 
 # Fetch references (per-genome reference-data downloader)
@@ -13,7 +13,7 @@ For each `--genome <name>`, downloads three files into `<output_dir>/<genome>/`:
 |----------|------------------------------------|-----------------------------|----------------------------|
 | `fasta`  | `genome.fa` (+ `.fai` if samtools) | GENCODE (EMBL-EBI mirror)   | ~3 GB (human), ~2.7 GB (mouse) |
 | `gtf`    | `genes.gtf`                        | GENCODE (EMBL-EBI mirror)   | ~0.9-1.5 GB                |
-| `motif`  | `HOCOMOCOv11_<species>.meme`       | autosome.org (HOCOMOCO v11) | ~5 MB                      |
+| `motif`  | `cisbp_human_2.meme` (human) / `cisBP_mouse.meme` (mouse) | CIS-BP — vendored at `cisbp_database/` | ~3.5 MB / ~0.7 MB     |
 
 Default output directory is `dependencies_data/` (under the current working directory, override with `--output`).
 
@@ -69,7 +69,7 @@ python scripts/fetch.py --genome hg38 --output dependencies_data/ --json
 ## Source choices (why these URLs)
 
 - **GENCODE FASTA + GTF via EMBL-EBI mirror** (`ftp.ebi.ac.uk/pub/databases/gencode/...`): the consortium URL pattern `release_N/...` has been stable for a decade; releases are immutable once published. EBI mirror is faster than the SciSchool primary.
-- **HOCOMOCO v11 MEME from autosome.org**: hosted at the same `final_bundle/hocomoco11/full/<SPECIES>/mono/` path since 2018; versioned, no rolling drift. v11 is the most recent release with a stable URL.
+- **CIS-BP MEME vendored at `cisbp_database/`** (no network): primary motif IDs are TF gene symbols, so Taiji's `GeneRanks.tsv` is directly interpretable. Human uses `cisbp_human_2.meme` (4443 PWMs, full CIS-BP); mouse uses `cisBP_mouse.meme`. Verified against a reference Nextflow run on the RA/OA hg38 chr22 dataset (Spearman 0.97, RMSE ~4e-5). HOCOMOCO is **not** supported — switching motif sources changes both TF coverage and PageRank values, so locking to one source keeps cross-run results comparable.
 - **Why not Ensembl?** Their URL paths bake the release number in differently and mouse genome filenames use a different convention than GENCODE. Picking one consortium and sticking with it makes URLs predictable across genomes.
 - **Why not UCSC?** UCSC's `hg38.fa` is fine for many uses but the chromosome ordering and contig naming drift slightly across genome builds. GENCODE's "primary assembly" FASTA is the cleaner choice for downstream Taiji.
 
@@ -101,7 +101,7 @@ The skill prints a per-file report after every run with status (`present` / `dow
 ## Interaction pattern
 
 1. **Always run `--check` first** when a user is unsure what's already on disk. It's free (no network), tells you exactly what's missing, and surfaces files that exist but have wrong sizes (likely interrupted previous downloads).
-2. **Default to GENCODE primary assembly + HOCOMOCO v11** unless the user has a specific reason for an alternative source. The manifest is editable; pinning to non-default sources is a deliberate choice that should live in a per-site fork of `reference_manifest.yml`.
+2. **Default to GENCODE primary assembly + CIS-BP** (the only supported motif source). The manifest is editable; pinning to non-default sources is a deliberate choice that should live in a per-site fork of `reference_manifest.yml`.
 3. **Watch out for the FASTA size.** ~3 GB uncompressed for human takes 3-10 minutes on a typical lab network. The downloader streams + decompresses on the fly so peak disk use is ~3 GB, not 6 GB.
 4. **`samtools faidx` is best-effort.** If samtools is on PATH, the `.fai` index is built automatically after download. If not, the skill prints a NOTE and the user can run `samtools faidx genome.fa` manually later — the FASTA file is still usable without the index for some Taiji subcommands.
 
