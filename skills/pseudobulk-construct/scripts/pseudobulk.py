@@ -343,7 +343,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--fragments", type=Path, default=None,
                    help="Path to fragments.tsv.gz (+ .tbi). Required for ATAC peaks.")
     p.add_argument("--genome", required=True,
-                   help="Genome tag (hg19, hg38, mm9, mm10, mm39).")
+                   help="Genome tag (hg19, hg38, mm9, mm10).")
     p.add_argument("--output-dir", required=True, type=Path,
                    help="Directory to write outputs.")
     p.add_argument("--metadata-cols", default=None,

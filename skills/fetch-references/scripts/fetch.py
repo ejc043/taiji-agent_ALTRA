@@ -592,7 +592,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.strip().splitlines()[0])
     p.add_argument("--manifest", type=Path, default=DEFAULT_MANIFEST,
                    help="Path to reference_manifest.yml. Default: sibling file.")
-    p.add_argument("--genome", help="Genome key (hg38, hg19, mm10, mm39, ...).")
+    p.add_argument("--genome", help="Genome key (hg38, hg19, mm10, ...).")
     p.add_argument("--output", type=Path, default=Path("dependencies_data"),
                    help="Output directory. Default: dependencies_data/")
     p.add_argument("--list", action="store_true",

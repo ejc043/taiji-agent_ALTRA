@@ -73,7 +73,6 @@ If `--fragments` is passed but the file is unreadable (bad path, truncated gzip,
 | hg38   | 2.9e9      |
 | mm9    | 1.87e9     |
 | mm10   | 1.87e9     |
-| mm39   | 1.87e9     |
 
 Add new genomes to `effective_genome_size()` in `call_peaks.R`.
 

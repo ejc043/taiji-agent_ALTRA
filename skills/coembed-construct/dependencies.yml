@@ -39,7 +39,7 @@ r_packages:
   - {name: EnsDb.Hsapiens.v86,    source: "bioconda",
      required_for: "human (hg38, hg19) GeneActivity"}
   - {name: EnsDb.Mmusculus.v79,   source: "bioconda",
-     required_for: "mouse (mm10, mm39) GeneActivity"}
+     required_for: "mouse (mm10) GeneActivity"}
 
 notes: |
   Soft-imports detect-dataset-type for the modality gate. Refuses non-

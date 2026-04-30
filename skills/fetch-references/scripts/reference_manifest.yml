@@ -89,23 +89,3 @@ mm10:
       target: mm10/cisBP_mouse.meme
       gunzip: false
       approx_size_mb: 0.7
-
-mm39:
-  description: "Mouse GRCm39 + GENCODE M34 + CIS-BP"
-  files:
-    fasta:
-      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M34/GRCm39.primary_assembly.genome.fa.gz
-      target: mm39/genome.fa
-      gunzip: true
-      approx_size_mb: 2700
-      build_fai: true
-    gtf:
-      url:    https://ftp.ebi.ac.uk/pub/databases/gencode/Gencode_mouse/release_M34/gencode.vM34.annotation.gtf.gz
-      target: mm39/genes.gtf
-      gunzip: true
-      approx_size_mb: 1000
-    motif_cisbp:
-      vendored_path: cisbp_database/cisBP_mouse.meme
-      target: mm39/cisBP_mouse.meme
-      gunzip: false
-      approx_size_mb: 0.7

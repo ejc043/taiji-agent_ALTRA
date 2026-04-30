@@ -419,7 +419,7 @@ fi
 if [[ "$FETCH_REFS" -eq 1 ]]; then
   if [[ -z "$FETCH_GENOME" ]]; then
     echo "[install] --fetch-references requires --genome <build>" >&2
-    echo "[install]   supported builds: hg38, hg19, mm10, mm39" >&2
+    echo "[install]   supported builds: hg38, hg19, mm10" >&2
     echo "[install]   e.g. bash bin/install.sh --fetch-references --genome hg38" >&2
     exit 2
   fi

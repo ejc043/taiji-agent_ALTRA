@@ -18,7 +18,6 @@ Where `<species>` is `human` or `mouse` and `<N>` is the release tag (e.g. `45`,
   - `hg38` → GENCODE v45 (released Mar 2024). Stable release; we're not chasing the rolling latest.
   - `hg19` → GENCODE v19 (released Feb 2014, frozen). v19 is the canonical "GRCh37 era" release; GENCODE doesn't do new releases on GRCh37.
   - `mm10` → GENCODE M25 (released Apr 2020, the last release on GRCm38). Newer releases (M26+) are on GRCm39 only.
-  - `mm39` → GENCODE M34 (released Mar 2024).
 
 ### CIS-BP MEME — vendored at `cisbp_database/`
 

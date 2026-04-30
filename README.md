@@ -36,17 +36,16 @@ cd taiji-agent
 # Drop your dataset under data/<your_dataset>/ first, then:
 bash bin/auto-install.sh --data-dir data/ --system macos --fetch-references --genome hg38
 # Linux: --system centos  or  --system ubuntu
-# Replace hg38 with hg19, mm10, or mm39 as needed.
+# Replace hg38 with hg19 or mm10 as needed.
 # Omit --fetch-references to skip reference staging (re-run install.sh with the flag later).
 ```
 
 What this does, in order:
 
-1. Classifies `data/` as bulk / single-cell / mixed (detect-dataset-type).
+1. Classifies `data/` as bulk / single-cell 
 2. Picks the profile:
    - **bulk** → `base` (~500 MB, ~5 min) — Python + xlsx + MACS3 only
    - **single-cell** → `sc` (~5 GB, ~25 min) — adds R + Seurat/Signac on top of base
-   - **mixed** → `sc` (covers both branches)
 3. Creates the `taiji-agent` conda env from the matching `environment.<profile>.yml`. **Skips this step if the env already has that profile installed** (idempotent — re-running on a fresh clone vs an existing env is fast).
 4. Runs `bin/postinstall.R` if SC profile is in scope (installs MuDataSeurat from GitHub for `.h5mu` input). `.h5ad` input is no longer auto-supported — see the SC notes in `skills/pseudobulk-construct/dependencies.yml` if you need it.
 5. Detects pre-existing Taiji binaries in `binaries/` by name; if a matching one is present, just creates a symlink. Otherwise downloads the Linux binary from the Taiji GitHub release for `--system centos|ubuntu`. macOS prints manual-download instructions because the asset filename varies by macOS version.
@@ -184,7 +183,7 @@ taiji-agent/
 │   ├── preflight-xlsx.py           verifies all paths in xlsx exist before launch
 │   └── doctor.sh                   --profile filter; verifies every dep across skills
 ├── skills/                         six production skills (see CLAUDE.md for catalog)
-│   ├── detect-dataset-type/        classifies bulk/SC/mixed; SC sub-modality
+│   ├── detect-dataset-type/        classifies bulk/SC; SC sub-modality
 │   ├── fetch-references/           idempotent GENCODE downloader + CIS-BP staging
 │   ├── build-taiji-input/          produces Taiji input xlsx
 │   ├── pseudobulk-construct/       SC → bulk-Taiji bridge (Seurat WNN + per-cluster MACS3)

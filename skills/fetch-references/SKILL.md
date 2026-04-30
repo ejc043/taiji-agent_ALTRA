@@ -17,7 +17,7 @@ For each `--genome <name>`, downloads three files into `<output_dir>/<genome>/`:
 
 Default output directory is `dependencies_data/` (under the current working directory, override with `--output`).
 
-Available genomes are listed by `--list`: `hg38`, `hg19`, `mm10`, `mm39`. Add new ones by editing `scripts/reference_manifest.yml` — the schema is documented at the top of that file.
+Available genomes are listed by `--list`: `hg38`, `hg19`, `mm10`. Add new ones by editing `scripts/reference_manifest.yml` — the schema is documented at the top of that file.
 
 ## Idempotency contract
 

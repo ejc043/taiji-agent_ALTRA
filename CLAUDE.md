@@ -99,7 +99,7 @@ Soft-attach contract: sibling skills always check for `None` before calling `app
 
 Idempotently stages the reference data Taiji needs into `<output_dir>/dependencies_data/`. FASTA + GTF are downloaded from GENCODE via the EMBL-EBI mirror; the MEME motif file is **CIS-BP** (vendored at `cisbp_database/`, no network). Reads a single `reference_manifest.yml` declaring URLs, target paths, gunzip flags, and approximate uncompressed sizes per genome. **HOCOMOCO is not supported** — locking the project to a single motif source keeps PageRank values comparable across runs.
 
-Genomes available out of the box: `hg38` (GENCODE v45), `hg19` (GENCODE v19), `mm10` (GENCODE M25), `mm39` (GENCODE M34). Add new ones by editing `scripts/reference_manifest.yml`.
+Genomes available out of the box: `hg38` (GENCODE v45), `hg19` (GENCODE v19), `mm10` (GENCODE M25). Add new ones by editing `scripts/reference_manifest.yml`.
 
 Idempotency: files at the expected path with size within ±5% of the manifest's `approx_size_mb` are skipped. Downloads are atomic (`.part` + rename). `--force` re-downloads; `--check` reports without downloading; `--dry-run` resolves URLs without touching the network. The skill never deletes files it didn't write itself.
 

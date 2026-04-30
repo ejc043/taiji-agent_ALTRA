@@ -31,7 +31,7 @@ Implements the [Stuart et al. 2019 / Signac integrate_atac vignette](https://stu
 | `--rna` | Path to scRNA-seq Seurat `.rds`. Must have an `RNA` assay with raw counts. Required. |
 | `--atac` | Path to scATAC-seq Seurat `.rds`. Must have a `ChromatinAssay` (named `ATAC` or `peaks`) with a fragments handle. Required. |
 | `--output` | Where to write the coembed `.rds`. Required. |
-| `--genome` | hg38 / hg19 / mm10 / mm39. Drives the EnsDb annotation pulled in for `GeneActivity`. Required. |
+| `--genome` | hg38 / hg19 / mm10. Drives the EnsDb annotation pulled in for `GeneActivity`. Required. |
 | `--target-cluster-size` | Target mean cluster size for the resolution binary search. Default: `200` (range `[100, 300]`). |
 | `--min-cluster-cells` | Drop clusters with fewer than this many cells. Default: `20`. |
 | `--metadata-cols` | Comma-separated metadata cols to preserve in the output. Skill checks they exist on **both** input objects (or warns if not) — values from the original objects are merged through verbatim. |

@@ -173,7 +173,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Where to write coembed.rds. Parent dir will hold "
                         "qc/umap.png and coembed_summary.json.")
     p.add_argument("--genome", required=True,
-                   help="hg38 / hg19 / mm10 / mm39 (drives the EnsDb annotation).")
+                   help="hg38 / hg19 / mm10 (drives the EnsDb annotation).")
     p.add_argument("--target-cluster-size", type=int, default=200,
                    help="Target mean cluster size for the resolution binary "
                         "search. Default: 200.")

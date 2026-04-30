@@ -15,7 +15,7 @@
 # Usage:
 #   bash bin/auto-install.sh --data-dir <path> [--system macos|centos|ubuntu]
 #                            [--solver micromamba|mamba|conda]
-#                            [--fetch-references --genome hg38|hg19|mm10|mm39]
+#                            [--fetch-references --genome hg38|hg19|mm10]
 #                                                       # stage reference data in the same step
 #                            [--dry-run]                # print decision, don't install
 #                            [...any other install.sh flag is forwarded]

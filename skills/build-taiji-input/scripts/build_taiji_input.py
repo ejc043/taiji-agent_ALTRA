@@ -75,7 +75,7 @@ def _find_epitensor(genome_name: str) -> Path | None:
     """Return the vendored epitensor loops file for genome_name, or None.
 
     Looks for exactly one file under <repo_root>/epitensor/<genome_name>/.
-    Returns None silently when the genome has no vendored file (e.g. mm39).
+    Returns None silently when the genome has no vendored file.
     """
     epitensor_dir = (
         Path(__file__).resolve().parent.parent.parent.parent

@@ -36,7 +36,7 @@ dependencies:
   # uses these EnsDb releases. Pinned so reproducibility doesn't drift if
   # newer EnsDb releases land on bioconda.
   - bioconductor-ensdb.hsapiens.v86      # human (hg38, hg19)
-  - bioconductor-ensdb.mmusculus.v79     # mouse (mm10, mm39)
+  - bioconductor-ensdb.mmusculus.v79     # mouse (mm10)
 
   # ---- Required by bin/postinstall.R for the GitHub-only package
   #      (MuDataSeurat), which isn't on bioconda ----
