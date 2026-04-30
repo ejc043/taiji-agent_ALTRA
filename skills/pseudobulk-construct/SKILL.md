@@ -1,6 +1,6 @@
 ---
 name: pseudobulk-construct
-description: Convert a single-cell object (.rds Seurat, .h5ad AnnData, or .h5mu MuData) into pseudobulk GeneQuant TSVs + per-cluster narrowPeak files that feed the bulk Taiji pipeline. Use this skill whenever the user wants to pseudobulk, aggregate, collapse, summarize, or bulk-ify a single-cell dataset — especially before handing off to build-taiji-input. Runs Seurat WNN clustering with scale-aware resolution tuning (targeting ~100-300 cells/cluster, adjusted for total cell count), filters small clusters (<20 RNA cells or <20 ATAC cells when assays are separate; <20 cells when paired), sums raw counts per (cluster × metadata) combination for RNA, and calls MACS2 peaks per cluster for ATAC. Trigger on phrases like "pseudobulk this", "construct pseudobulks", "cluster and aggregate", "collapse single cell to bulk", "make the scRNA bulk-compatible", "per-cluster peaks", "prep this for Taiji from single cell", or anywhere the user needs to bridge SC → bulk Taiji.
+description: Convert a single-cell object (.rds Seurat or .h5ad AnnData) into pseudobulk GeneQuant TSVs + per-cluster narrowPeak files that feed the bulk Taiji pipeline. Use this skill whenever the user wants to pseudobulk, aggregate, collapse, summarize, or bulk-ify a single-cell dataset — especially before handing off to build-taiji-input. Runs Seurat WNN clustering with scale-aware resolution tuning (targeting ~100-300 cells/cluster, adjusted for total cell count), filters small clusters (<20 RNA cells or <20 ATAC cells when assays are separate; <20 cells when paired), sums raw counts per (cluster × metadata) combination for RNA, and calls MACS2 peaks per cluster for ATAC. Trigger on phrases like "pseudobulk this", "construct pseudobulks", "cluster and aggregate", "collapse single cell to bulk", "make the scRNA bulk-compatible", "per-cluster peaks", "prep this for Taiji from single cell", or anywhere the user needs to bridge SC → bulk Taiji.
 ---
 
 # Pseudobulk construction (scRNA + scATAC → bulk Taiji inputs)
@@ -30,14 +30,14 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 ## What this skill refuses to do
 
 - Bulk inputs. If `detect-dataset-type` classifies the directory as bulk, this skill errors and redirects to `build-taiji-input`.
-- `sc-undetermined` single-cell inputs. If the skill can't tell whether RNA and ATAC are paired (multiome) or separate, it will not guess — it asks the user to clarify, or to provide a `.h5mu` / rename files with an explicit `multiome` / `rna` / `atac` token.
+- `sc-undetermined` single-cell inputs. If the skill can't tell whether RNA and ATAC are paired (multiome) or separate, it will not guess — it asks the user to clarify or rename files with an explicit `multiome` / `rna` / `atac` token.
 - `separate-assay` inputs that haven't been co-embedded yet. The skill checks for a transferred-label column in the object's `@meta.data` (default: `predicted.id`, configurable via `--transferred-label-col`) and refuses if it's missing — pointing the user at the Signac integrate_atac workflow first: <https://stuartlab.org/signac/articles/integrate_atac>.
 
 ## Upstream metadata convention (REQUIRED for correct stratification)
 
 `--metadata-cols` produces the full cross-product within each cluster, so any value-set inconsistency in those columns silently doubles the group count and halves the per-group sample size. The single most important upstream rule:
 
-- **Lowercase every metadata-value string before saving the `.rds` (or `.h5ad` / `.h5mu`).** `tissue ∈ {spleen, Spleen}` after `merge()` is THREE distinct values, not two — `pseudobulk-construct --metadata-cols tissue` would emit per-cluster groups for `spleen` AND `Spleen` independently, and Taiji's downstream PageRank diffs the wrong cohorts. Idiomatic R, applied to BOTH modalities before they're handed to `coembed-construct`:
+- **Lowercase every metadata-value string before saving the `.rds` (or `.h5ad`).** `tissue ∈ {spleen, Spleen}` after `merge()` is THREE distinct values, not two — `pseudobulk-construct --metadata-cols tissue` would emit per-cluster groups for `spleen` AND `Spleen` independently, and Taiji's downstream PageRank diffs the wrong cohorts. Idiomatic R, applied to BOTH modalities before they're handed to `coembed-construct`:
   ```r
   for (col in c("tissue", "genotype", "sample_id", "donor", "batch")) {
     if (col %in% colnames(obj@meta.data)) {
@@ -55,7 +55,7 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 
 | Flag                        | Purpose                                                                               |
 |-----------------------------|---------------------------------------------------------------------------------------|
-| `--input`                   | Path to the single-cell object (.rds / .h5ad / .h5mu). Required.                      |
+| `--input`                   | Path to the single-cell object (.rds / .h5ad). Required.                              |
 | `--fragments`               | Path to `fragments.tsv.gz` (plus `.tbi`). Required if peaks are to be called.         |
 | `--genome`                  | hg38 / hg19 / mm10. Drives Signac::CallPeaks `effective.genome.size` and downstream-Taiji metadata. |
 | `--metadata-cols`           | Comma-separated metadata columns to stratify on (e.g. `genotype,tissue`). Multiple columns produce the FULL CROSS-PRODUCT within each cluster — for `genotype,tissue` you get per-cluster `(WT,spleen)`, `(WT,siiel)`, `(KO,spleen)`, `(KO,siiel)`. Default: auto-detect categorical columns with 2-20 unique values. |
@@ -77,7 +77,7 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 This skill is not self-contained — it shells out to R and MACS2. The Python entry point checks these at startup and emits a clear error if they're missing:
 
 - `Rscript` ≥ 4.2 on `PATH`.
-- R packages: `Seurat` ≥ 5.0, `Signac` ≥ 1.12 (for ATAC), `Matrix`, `GenomicRanges`, `dplyr`. For `.h5ad` input: `SeuratDisk` or `anndata` + `sceasy`. For `.h5mu`: `MuDataSeurat`.
+- R packages: `Seurat` ≥ 5.0, `Signac` ≥ 1.12 (for ATAC), `Matrix`, `GenomicRanges`, `dplyr`. For `.h5ad` input: `SeuratDisk` or `anndata` + `sceasy`.
 - `macs2` (or `macs3`) on `PATH`.
 - `tabix` / `bgzip` available if fragments need to be subsetted.
 

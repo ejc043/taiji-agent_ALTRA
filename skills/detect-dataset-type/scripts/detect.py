@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import Iterable
 
 BULK_EXTS = {".tsv", ".narrowpeak", ".bedpe"}
-SC_EXTS = {".h5ad", ".rds", ".h5mu"}  # .h5mu = MuData (multi-modal, same cells)
+SC_EXTS = {".h5ad", ".rds"}
 
 # Filenames that signal single-cell regardless of their extension. These take
 # priority over BULK_EXTS so that 10x cellranger / cellranger-arc outputs
@@ -153,13 +153,13 @@ def _check_bulk_completeness(result: "DetectResult") -> None:
 
 def _check_sc_completeness(result: "DetectResult", all_basenames: list[str]) -> None:
     """Warn if no SC object file or no fragments file found for an SC dataset."""
-    sc_object_exts = {".rds", ".h5ad", ".h5mu"}
+    sc_object_exts = {".rds", ".h5ad"}
     has_object = any(ext in result.sc_files for ext in sc_object_exts)
     if not has_object:
         result.warnings.append(
-            "MISSING REQUIRED: no single-cell object file (.rds / .h5ad / .h5mu) found. "
-            "pseudobulk-construct requires a Seurat (.rds), AnnData (.h5ad), "
-            "or MuData (.h5mu) object to load cells and run clustering."
+            "MISSING REQUIRED: no single-cell object file (.rds / .h5ad) found. "
+            "pseudobulk-construct requires a Seurat (.rds) or AnnData (.h5ad) "
+            "object to load cells and run clustering."
         )
 
     has_fragments = "fragments.tsv" in result.sc_files
@@ -179,8 +179,7 @@ def _classify_sc_modality(
     """Decide whether SC data is multiome, separate-assay, or undetermined.
 
     Tier logic (first match wins):
-      1. Any `.h5mu` file present                       -> multiome
-      2. cellranger-arc signature: filtered_feature_bc_matrix.h5
+      1. cellranger-arc signature: filtered_feature_bc_matrix.h5
          AND atac_fragments.tsv both present            -> multiome
       3. A filename contains any MULTIOME_HINTS token   -> multiome
       4. Filenames collectively contain BOTH an RNA_HINTS
@@ -199,11 +198,7 @@ def _classify_sc_modality(
     lowered = [n.lower() for n in all_basenames]
     joined = " ".join(lowered)
 
-    # Tier 1: MuData
-    if ".h5mu" in sc_files:
-        return "multiome"
-
-    # Tier 2: cellranger-arc directory signature
+    # Tier 1: cellranger-arc directory signature
     has_feature_h5 = any("filtered_feature_bc_matrix.h5" in n for n in lowered)
     has_atac_fragments = any("atac_fragments.tsv" in n for n in lowered)
     if has_feature_h5 and has_atac_fragments:
@@ -312,7 +307,7 @@ def detect_dataset_type(
                 "single-cell multiome detected (RNA + ATAC from the SAME cells). "
                 "Not compatible with build-taiji-input; route to a single-cell "
                 "Taiji workflow that accepts paired RNA+ATAC (e.g. sc-Taiji with "
-                "a MuData/AnnData + fragments input)."
+                "an AnnData + fragments input)."
             )
         elif result.sc_modality == "separate-assay":
             result.warnings.append(
@@ -332,7 +327,7 @@ def detect_dataset_type(
                 "single-cell data detected but the RNA/ATAC modality layout "
                 "could not be inferred from filenames. If this is multiome "
                 "(same cells), rename files with a 'multiome' token or provide "
-                "a .h5mu. If RNA and ATAC come from DIFFERENT cells, run "
+                "multiome/rna/atac tokens in filenames. If RNA and ATAC come from DIFFERENT cells, run "
                 "coembed-construct first to merge them into a shared latent "
                 "space, then pseudobulk-construct with --use-existing-clusters. "
                 "build-taiji-input is bulk-only and will not run on this dataset."

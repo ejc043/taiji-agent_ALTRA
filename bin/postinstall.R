@@ -1,82 +1,8 @@
 #!/usr/bin/env Rscript
-# postinstall.R — install GitHub-only R packages after the conda env is built.
+# postinstall.R — placeholder for future GitHub-only R package installs.
 #
-# Why this isn't in environment.yml: MuDataSeurat is not distributed via
-# bioconda or conda-forge. The official install path is
-# remotes::install_github, which is straightforward but can't be expressed
-# in a conda recipe.
-#
-# Note: SeuratDisk used to be installed here for .h5ad ingestion but was
-# removed — it's unmaintained upstream and frequently fails to build on
-# managed cluster envs. .h5ad inputs to pseudobulk-construct now require
-# either a user-supplied SeuratDisk install or a Python-side conversion
-# to .rds before calling the skill.
-#
-# Idempotency: this script checks whether each package already loads cleanly
-# before reinstalling. Re-runs are a no-op when packages are present.
-#
-# Usage:
-#   Rscript bin/postinstall.R
-#   Rscript bin/postinstall.R --force        # reinstall even if already loadable
+# MuDataSeurat (.h5mu support) was removed. No GitHub-only R packages are
+# currently required. This script exits 0 immediately and is kept so
+# bin/install.sh can call it unconditionally without change.
 
-args <- commandArgs(trailingOnly = TRUE)
-force <- "--force" %in% args
-quiet_skip <- "--quiet-skip-when-missing" %in% args
-
-suppressPackageStartupMessages({
-  if (!requireNamespace("remotes", quietly = TRUE)) {
-    if (quiet_skip) {
-      # Called by bin/install.sh under --profile base where the SC stack
-      # (and therefore r-remotes) is intentionally absent. No-op cleanly.
-      message("[postinstall] r-remotes not installed; sc profile not in scope. ",
-              "Skipping GitHub R-package install.")
-      quit(status = 0)
-    }
-    stop("remotes package missing — was the conda env built with --profile sc ",
-         "or full? Re-run `bash bin/install.sh --profile sc` or install ",
-         "r-remotes manually first.")
-  }
-})
-
-# Each entry: (R package name, GitHub repo). Add new GitHub-only deps here.
-github_packages <- list(
-  list(pkg = "MuDataSeurat", repo = "PMBio/MuDataSeurat")
-)
-
-install_one <- function(pkg, repo) {
-  loadable <- requireNamespace(pkg, quietly = TRUE)
-  if (loadable && !force) {
-    message(sprintf("[postinstall] %s already installed (%s) — skipping.",
-                    pkg, packageVersion(pkg)))
-    return(invisible(TRUE))
-  }
-  message(sprintf("[postinstall] installing %s from github:%s ...", pkg, repo))
-  tryCatch(
-    {
-      remotes::install_github(repo, upgrade = "never", quiet = FALSE,
-                              dependencies = TRUE)
-      # Verify it loads after install.
-      if (!requireNamespace(pkg, quietly = TRUE)) {
-        stop(sprintf("%s installed but does not load. Inspect the build log above.", pkg))
-      }
-      message(sprintf("[postinstall] OK: %s %s", pkg, packageVersion(pkg)))
-      invisible(TRUE)
-    },
-    error = function(e) {
-      message(sprintf("[postinstall] FAILED: %s — %s", pkg, conditionMessage(e)))
-      invisible(FALSE)
-    }
-  )
-}
-
-results <- vapply(github_packages,
-                  function(x) install_one(x$pkg, x$repo),
-                  logical(1))
-
-if (any(!results)) {
-  cat("\n[postinstall] one or more packages failed. See messages above.\n",
-      file = stderr())
-  quit(status = 1)
-}
-
-cat("\n[postinstall] all GitHub R packages installed successfully.\n")
+cat("[postinstall] nothing to install.\n")

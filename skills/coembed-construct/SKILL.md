@@ -160,7 +160,6 @@ The skill validates a lot of failure modes at startup, but a few conventions on 
 |-------|-------|
 | Two separate `.rds` (one RNA, one ATAC), same biological system | **coembed-construct** first → its output → pseudobulk-construct |
 | One pre-coembedded `.rds` (you ran `merge` + clustering yourself, has `assay` + `seurat_clusters` columns) | pseudobulk-construct directly with `--use-existing-clusters` |
-| One `.h5mu` (multiome — same cells in both modalities) | pseudobulk-construct directly with `--clustering-signal wnn` (no coembed needed; cells are already paired) |
 | One `.rds` (RNA-only or ATAC-only) | pseudobulk-construct directly with `--clustering-signal rna` or `atac` |
 
 ## Why we don't auto-do label transfer

@@ -499,7 +499,7 @@ def main(argv: list[str] | None = None) -> int:
                     "multiome": (
                         " RNA and ATAC are paired at the cell level (multiome); "
                         "route to a single-cell Taiji workflow that accepts paired "
-                        "inputs (e.g. sc-Taiji with MuData / AnnData + fragments)."
+                        "inputs (e.g. sc-Taiji with AnnData + fragments)."
                     ),
                     "separate-assay": (
                         " RNA and ATAC come from DIFFERENT cell populations. "

@@ -13,7 +13,7 @@ Single-cell ATAC:
   * File name contains "fragments" or "atac_peak_bc_matrix"
 
 Single-cell RNA:
-  * `.h5ad`, `.h5mu`, `.loom`, or `.rds` (Seurat/SCE) extension
+  * `.h5ad`, `.loom`, or `.rds` (Seurat/SCE) extension
   * 10x filtered/raw matrix directory
   * File name contains "cellranger", "starsolo", "kb_python"
 
@@ -40,7 +40,7 @@ from typing import Literal
 from .samplesheet import AssayType, Sample
 
 SC_ATAC_FILE_HINTS = ("fragments.tsv", "fragments.tsv.gz", "atac_peak_bc_matrix")
-SC_RNA_EXTS = (".h5ad", ".h5mu", ".loom", ".rds")
+SC_RNA_EXTS = (".h5ad", ".loom", ".rds")
 TENX_DIR_HINTS = ("filtered_feature_bc_matrix", "raw_feature_bc_matrix")
 MULTIOME_HINTS = ("multiome",)
 

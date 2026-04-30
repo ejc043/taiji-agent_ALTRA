@@ -17,9 +17,8 @@ into composable profiles so users only install what they'll use:
 | Profile | Contents | Enables | Disk | Time |
 |---------|----------|---------|------|------|
 | `base` (default) | Python + xlsx I/O + MACS3 + local taiji-agent package | 5 of 6 skills (everything except pseudobulk-construct) | ~500 MB | ~5 min |
-| `sc` (additive) | R-base + r-seurat + r-signac + supporting Bioconductor (GenomicRanges + EnsDb) + r-remotes + GitHub R package (MuDataSeurat for `.h5mu`) | pseudobulk-construct, coembed-construct | +3-4 GB | +15-30 min |
+| `sc` (additive) | R-base + r-seurat + r-signac + supporting Bioconductor (GenomicRanges + EnsDb) | pseudobulk-construct, coembed-construct | +3-4 GB | +15-30 min |
 | `dev` (orthogonal) | pytest + pytest-cov + ruff + mypy + ipython | author tooling for editing the skills themselves | +500 MB | +3 min |
-| `full` | base + sc + dev | all skills + dev tooling | ~5 GB | ~25 min |
 
 **Profiles compose additively**: passing `--profile sc` always installs `base`
 first, then layers SC on top. A user who installed `base` and later wants SC
@@ -47,7 +46,7 @@ for SC skills when you only installed base.
 | If your dataset is... | Use profile |
 |------------------------|-------------|
 | Bulk RNA-seq / ATAC-seq / HiC (TSV / narrowPeak / bedpe) | `base` |
-| Single-cell (.rds / .h5ad / .h5mu) requiring pseudobulk | `sc` |
+| Single-cell (.rds / .h5ad) requiring pseudobulk | `sc` |
 | Mixed cohort with both bulk + SC samples | `sc` (covers both branches) |
 | Hacking on the skills themselves | `dev` (or `full` if also processing data) |
 | Unsure | `base` — upgrade with `--profile sc` later if needed |
@@ -83,10 +82,9 @@ That single command:
 1. Creates the conda env `taiji-agent` from `environment.base.yml` using
    `micromamba` (5-10× faster than `conda`; falls back to `mamba`/`conda`
    if you pass `--solver`).
-2. If profile includes `sc`: runs `bin/postinstall.R` inside the env to
-   install MuDataSeurat from GitHub (it isn't on bioconda; needed for
-   `.h5mu` input). SeuratDisk (formerly auto-installed for `.h5ad` input)
-   was removed — install manually if you need it.
+2. If profile includes `sc`: runs `bin/postinstall.R` (currently a no-op;
+   kept for future GitHub-only R packages). SeuratDisk for `.h5ad` input
+   is not auto-installed — install manually if you need it.
 3. Runs `bin/install-taiji.sh` to download the Taiji binary for the
    current OS into `binaries/taiji`.
 
@@ -204,7 +202,7 @@ packing) and lives in `binaries/taiji`.
 ### When to rebuild the tarball
 
 - After any `environment.yml` or lockfile change.
-- After any `bin/postinstall.R` change (e.g. updating MuDataSeurat).
+- After any `bin/postinstall.R` change.
 - After a new R package gets added to the env.
 
 The build is the slow step (~10-20 min); the restore is the fast one (<2 min),
@@ -228,9 +226,7 @@ without any container runtime.
 
 - **conda-pack is platform-specific.** A linux-64 tarball won't run on
   macOS. If you need both, build two tarballs from two source machines.
-- **GitHub-only R packages are baked in at install time.** Updating
-  MuDataSeurat means rebuilding the tarball. That's the right tradeoff
-  for reproducibility.
+- **GitHub-only R packages (if any are added back) are baked in at install time.** Rebuilding the tarball is required after any `bin/postinstall.R` change.
 - **Reference data (FASTA, GTF, MEME files) does NOT go in the tarball.**
   Genome files are too big and shared across many projects — they belong
   in `/stg3/data1/eunice/database/` (or your lab's equivalent) with
@@ -263,7 +259,6 @@ python_packages:
 
 r_packages:
   - {name: Seurat,        min_version: "5.0",  source: "bioconda"}
-  - {name: MuDataSeurat,  source: "github",   repo: "PMBio/MuDataSeurat"}
 
 data:
   - description: "fragments.tsv.gz"

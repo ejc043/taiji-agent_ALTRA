@@ -53,7 +53,7 @@ The cluster count this targets is calibrated for biological cell-type granularit
 
 ## When this skill refuses
 
-- **Multiome input** (single .h5mu / cellranger-arc filtered_feature_bc_matrix + atac_fragments.tsv): doesn't need co-embedding — same cells, just use `pseudobulk-construct --clustering-signal wnn`.
+- **Multiome input** (cellranger-arc filtered_feature_bc_matrix + atac_fragments.tsv, or a pre-merged .rds): doesn't need co-embedding — same cells, just use `pseudobulk-construct --clustering-signal wnn`.
 - **Pre-co-embedded input** (one .rds with both modalities already merged + clustered): also doesn't need this skill — `pseudobulk-construct --use-existing-clusters` directly.
 - **Bulk input**: the `detect-dataset-type` gate refuses upfront.
 

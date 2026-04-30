@@ -55,12 +55,6 @@ load_input <- function(path) {
     }
     return(SeuratDisk::LoadH5Seurat(h5seurat))
   }
-  if (ext == "h5mu") {
-    if (!requireNamespace("MuDataSeurat", quietly = TRUE)) {
-      stop("MuDataSeurat required for .h5mu")
-    }
-    return(MuDataSeurat::ReadH5MU(path))
-  }
   stop("unsupported extension: .", ext)
 }
 

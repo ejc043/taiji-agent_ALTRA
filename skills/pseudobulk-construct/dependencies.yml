@@ -6,7 +6,7 @@ profile: sc          # the only SC-using skill — requires R + Seurat + Signac.
                      # When users only do bulk pipelines, install just `base`
                      # and skip this skill; bin/auto-install.sh detects from
                      # the data dir and adds `sc` only when needed.
-purpose: Bridge single-cell objects (.rds/.h5ad/.h5mu) to bulk-Taiji inputs
+purpose: Bridge single-cell objects (.rds/.h5ad) to bulk-Taiji inputs
          via Seurat WNN clustering + per-cluster MACS3/MACS2 peak calling.
 
 binaries:
@@ -35,8 +35,6 @@ r_packages:
   - {name: dplyr,                               source: "conda"}
   - {name: optparse,                            source: "conda"}
   - {name: jsonlite,                            source: "conda"}
-  - {name: MuDataSeurat,   source: "github",   repo: "PMBio/MuDataSeurat",
-     required_for: ".h5mu input"}
   # SeuratDisk (formerly auto-installed for .h5ad input) was removed —
   # unmaintained upstream and brittle to build under managed cluster envs.
   # If you need .h5ad ingestion, install it manually:

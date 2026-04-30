@@ -10,7 +10,7 @@ Install once on each machine where you'll run the pipeline:
 |------|-----|---------|
 | **git** | clone the repo | `brew install git` (Mac) / system pkg manager (Linux) |
 | **python ≥ 3.10** | drives the skills + scripts | usually preinstalled; `brew install python@3.11` if not |
-| **a conda solver** | builds the env from the profile-specific YAMLs | `brew install micromamba` (recommended, fastest) — `mamba` or `conda` also work |
+| **a conda solver** | builds the env from the profile-specific YAMLs | `brew install micromamba` (recommended, fastest) |
 | **Claude Code** | drives the agentic pipeline | follow Anthropic's install instructions |
 
 
@@ -28,7 +28,7 @@ cd taiji-agent
 `bin/auto-install.sh` runs `detect-dataset-type` on your data directory, picks the right profile (`base` for bulk-only, `sc` for single-cell), and installs everything end-to-end:
 
 - conda env named **`taiji-agent`** with the right packages for your dataset
-- GitHub-only R package (MuDataSeurat, for `.h5mu` input) if the SC profile is needed
+- R packages needed for the SC profile
 - The Taiji binary auto-selected by `--system` (`centos`, `ubuntu`, `macos`)
 
 ```bash
@@ -46,7 +46,7 @@ What this does, in order:
    - **bulk** → `base` (~500 MB, ~5 min) — Python + parent input + MACS3 only
    - **single-cell** → `sc` (~5 GB, ~25 min) — adds R + Seurat/Signac on top of base
 3. Creates the `taiji-agent` conda env from the matching `environment.<profile>.yml`. **Skips this step if the env already has that profile installed** (idempotent — re-running on a fresh clone vs an existing env is fast).
-4. Runs `bin/postinstall.R` if SC profile is in scope (installs MuDataSeurat from GitHub for `.h5mu` input). `.h5ad` input is no longer auto-supported — see the SC notes in `skills/pseudobulk-construct/dependencies.yml` if you need it.
+4. Runs `bin/postinstall.R` if SC profile is in scope (no-op currently; kept for future GitHub-only R packages).
 5. Detects pre-existing Taiji binaries in `binaries/` by name; if a matching one is present, just creates a symlink. Otherwise downloads the Linux binary from the Taiji GitHub release for `--system centos|ubuntu`. macOS prints manual-download instructions because the asset filename varies by macOS version.
 
 ### 3. Verify the install
@@ -79,7 +79,6 @@ RNA and ATAC are both required per sample; HiC is optional but improves TF→tar
 |-----------|--------|--------|----------|
 | `.rds` | Seurat (v5) or SingleCellExperiment | direct R `readRDS` | RNA-only / ATAC-only / multiome / separate-assay |
 | `.h5ad` | AnnData (Python) | via `SeuratDisk::Convert` | typically RNA-only or separate-assay |
-| `.h5mu` | MuData (Python) | via `MuDataSeurat` | always treated as multiome |
 
 HiC is not a direct input for single-cell workflows — it enters via `build-taiji-input` after pseudobulking. If no HiC is supplied at that stage, vendored EpiTensor predictions for the genome are used automatically (same fallback as bulk).
 
@@ -108,7 +107,7 @@ Log everything to
 the workflow log so I can audit later.
 ```
 
-**Single-cell, multiome (.h5mu / cellranger-arc — same cells in both modalities):**
+**Single-cell, multiome (cellranger-arc — same cells in both modalities):**
 
 ```
 Run Taiji on the multiome dataset at `data/<your_dataset>/`, hg38. Stratify
@@ -145,7 +144,7 @@ taiji-agent/
 │   ├── auto-install.sh             agent-driven: data → profile → install
 │   ├── install.sh                  profile-aware: --profile {base|sc|dev}
 │   ├── install-taiji.sh            per-system Taiji binary downloader / detector
-│   ├── postinstall.R               GitHub-only R packages (MuDataSeurat)
+│   ├── postinstall.R               placeholder for future GitHub-only R packages
 │   ├── run-taiji.sh                per-run executor (delegates per-sample to taiji-runner)
 │   ├── sandbox-run.sh              workspace-bounded execution wrapper
 │   ├── preflight-xlsx.py           verifies all paths in parent input exist before launch

@@ -24,7 +24,7 @@ skills/                 Plugin-style skills (the bulk of the project's logic liv
 bin/                    one-command install + verifier
   install.sh                top-level installer (env + R postinstall + Taiji binary)
   install-taiji.sh          per-system Taiji binary downloader
-  postinstall.R             remotes::install_github() for MuDataSeurat (.h5mu input)
+  postinstall.R             placeholder for future GitHub-only R packages
   doctor.sh                 verifies every dep declared in skills/*/dependencies.yml
   run-taiji.sh              top-level Taiji executor (binary picker + preflight + workflow-log + delegate)
   sandbox-run.sh            workspace-bounded execution wrapper
@@ -46,7 +46,7 @@ Seven production skills, all chainable end-to-end. The `taiji/` directory is res
 
 Classifies a directory as `bulk` / `single-cell` / `mixed` / `unknown` from file extensions plus 10x cellranger filename patterns. For single-cell, sub-classifies into `multiome` (RNA+ATAC same cells), `separate-assay` (different cells, needs Signac `integrate_atac`), or `sc-undetermined`. No file opens — fast and deterministic.
 
-Recognized signatures: bulk via `.tsv` / `.narrowPeak` / `.bedpe`; single-cell via `.h5ad` / `.rds` / `.h5mu` plus 10x filename overrides (`fragments.tsv`, `barcodes.tsv`, `matrix.mtx`, `filtered_*_bc_matrix.h5`, etc.) which take priority over bulk extensions.
+Recognized signatures: bulk via `.tsv` / `.narrowPeak` / `.bedpe`; single-cell via `.h5ad` / `.rds` plus 10x filename overrides (`fragments.tsv`, `barcodes.tsv`, `matrix.mtx`, `filtered_*_bc_matrix.h5`, etc.) which take priority over bulk extensions.
 
 Used by `build-taiji-input` (refuses SC inputs) and `pseudobulk-construct` (refuses bulk inputs; uses `sc_modality` to pick clustering signal).
 
@@ -70,7 +70,7 @@ Hardened against several silent-failure classes — see `skills/coembed-construc
 
 ### `pseudobulk-construct` — single-cell → bulk-Taiji bridge
 
-Converts a single-cell object (`.rds` / `.h5ad` / `.h5mu`) plus a fragments file into pseudobulk RNA GeneQuant TSVs and per-cluster narrowPeak files in the exact layout `build-taiji-input` consumes. Closes the SC → bulk Taiji loop.
+Converts a single-cell object (`.rds` / `.h5ad`) plus a fragments file into pseudobulk RNA GeneQuant TSVs and per-cluster narrowPeak files in the exact layout `build-taiji-input` consumes. Closes the SC → bulk Taiji loop.
 
 Pipeline (orchestrated by `pseudobulk.py`): detect-dataset-type gate → dependency check → `load_and_cluster.R` (Seurat/Signac WNN clustering or RNA-only PCA / ATAC-only LSI; scale-aware resolution binary search targeting mean ~200 cells/cluster, drops <20-cell clusters) → `aggregate_rna.R` (sums raw counts per (cluster × metadata) group → 2-column GeneQuant TSV) → `call_peaks.R` (per-cluster `Signac::CallPeaks`; barcode reconciliation against fragments.tsv.gz with ≥95% overlap required, fail-loud otherwise; emits `<group>.narrowPeak`) → `manifest.tsv` for direct hand-off to build-taiji-input.
 
@@ -181,7 +181,7 @@ All inputs to Taiji are pre-aligned/pre-quantified — no BWA, STAR, RSEM, samto
 - Pinned Python deps in `environment.yml`: click, pydantic, pyyaml, jinja2, rich, pandas, openpyxl
 - Rscript ≥ 4.2 (only for `pseudobulk-construct` and `coembed-construct`)
 - R packages (bioconda): Seurat ≥ 5.0, Signac ≥ 1.12, Matrix, GenomicRanges, GenomeInfoDb, biovizBase, dplyr, optparse, jsonlite
-- R packages (GitHub-only, installed by `bin/postinstall.R`): MuDataSeurat (for `.h5mu`). SeuratDisk (for `.h5ad`) is **not** auto-installed — unmaintained upstream, brittle to build on cluster envs. `.h5ad` ingestion now requires either a manual `remotes::install_github("mojaveazure/seurat-disk")` or upstream conversion to `.rds`.
+- SeuratDisk (for `.h5ad`) is **not** auto-installed — unmaintained upstream, brittle to build on cluster envs. `.h5ad` ingestion requires either a manual `remotes::install_github("mojaveazure/seurat-disk")` or upstream conversion to `.rds`.
 - MACS3 ≥ 3.0 (or MACS2 — the SC skills auto-detect whichever is on PATH)
 - gunzip + awk (standard Unix)
 
@@ -202,7 +202,7 @@ bash bin/doctor.sh --profile base                        # filter by profile
 | Profile | Contents | Enables | Disk | Time |
 |---------|----------|---------|------|------|
 | `base` (default) | Python + click/pydantic/pyyaml + pandas + openpyxl + macs3 + local pkg | detect-dataset-type, build-taiji-input, fetch-references, taiji-runner, workflow-log | ~500 MB | ~5 min |
-| `sc` (additive) | r-base + r-seurat + r-signac + Bioconductor (GenomicRanges + GenomeInfoDb + biovizBase + EnsDb) + r-remotes + (postinstall) MuDataSeurat | pseudobulk-construct, coembed-construct | +3-4 GB | +15-30 min |
+| `sc` (additive) | r-base + r-seurat + r-signac + Bioconductor (GenomicRanges + GenomeInfoDb + biovizBase + EnsDb) | pseudobulk-construct, coembed-construct | +3-4 GB | +15-30 min |
 | `dev` (orthogonal) | pytest + pytest-cov + ruff + mypy + ipython | author tooling | +500 MB | +3 min |
 
 `sc` is **additive** — a user who installed `base` and later needs SC can run `bash bin/install.sh --profile sc` and only the R packages get added. Each skill declares its profile in `skills/<name>/dependencies.yml`; `bin/doctor.sh --profile <name>` filters the verification table.
@@ -224,7 +224,7 @@ These are load-bearing — preserve them when adding new skills or extending exi
 
 ## Single-cell preprocessing conventions (project-wide)
 
-These apply to every `.rds` / `.h5ad` / `.h5mu` that flows into `coembed-construct` or `pseudobulk-construct`. The skills detect violations at startup and warn, but harmonizing upstream is strictly better than relying on the runtime warning — it eliminates the failure class entirely instead of just surfacing it.
+These apply to every `.rds` / `.h5ad` that flows into `coembed-construct` or `pseudobulk-construct`. The skills detect violations at startup and warn, but harmonizing upstream is strictly better than relying on the runtime warning — it eliminates the failure class entirely instead of just surfacing it.
 
 - **Lowercase every metadata-value string before saving.** Casing mismatches across modalities (e.g. `Tissue_A` on RNA vs `tissue_a` on ATAC) survive `merge()` as TWO distinct values and silently halve effective sample size in cross-product stratification — the skills emit `WARN: CASE-ONLY mismatch`, but the user-side fix is what removes the bug. Idiomatic R applied to BOTH per-modality objects before they enter the pipeline:
   ```r
@@ -261,7 +261,7 @@ Every command the agent invokes runs through `bin/sandbox-run.sh`, a layered wra
 - The actual Taiji CLI plugin wrapping these skills (the `skills/taiji/` directory is reserved for this).
 - A SLURM submission skill that takes a `taiji_input.xlsx` + a config and emits an sbatch script.
 - A cron watchdog that monitors upstream output directories (e.g. cellranger output dirs) and triggers the pipeline when new datasets land.
-- For `pseudobulk-construct`: real fixture `.rds` / `.h5ad` / `.h5mu` files, an eval loop matching `build-taiji-input`'s and `detect-dataset-type`'s, and first-run validation on a SLURM env (R syntax check + end-to-end on a public PBMC multiome).
+- For `pseudobulk-construct`: real fixture `.rds` / `.h5ad` files, an eval loop matching `build-taiji-input`'s and `detect-dataset-type`'s, and first-run validation on a SLURM env (R syntax check + end-to-end on a public PBMC multiome).
 
 ## Where to find what
 

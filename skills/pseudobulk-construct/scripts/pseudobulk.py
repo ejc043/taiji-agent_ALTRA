@@ -193,7 +193,7 @@ def gate_on_detect(input_path: Path, fragments_path: Path | None) -> dict:
     if result.classification == "bulk":
         print(
             f"ERROR: {input_path} looks like bulk data, not single-cell. "
-            "This skill only runs on .rds / .h5ad / .h5mu objects. Use "
+            "This skill only runs on .rds / .h5ad objects. Use "
             "build-taiji-input directly on the bulk files.",
             file=sys.stderr,
         )
@@ -259,7 +259,7 @@ def pick_clustering_signal(
             "ERROR: detect-dataset-type could not determine whether this is "
             "multiome or separate-assay. Rerun with an explicit "
             "--clustering-signal flag, or disambiguate the input by "
-            "renaming/providing a .h5mu. See: "
+            "renaming files with multiome/rna/atac tokens. See: "
             "https://stuartlab.org/signac/articles/integrate_atac",
             file=sys.stderr,
         )
@@ -339,7 +339,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         )
     )
     p.add_argument("--input", required=True, type=Path,
-                   help="Path to .rds / .h5ad / .h5mu single-cell object.")
+                   help="Path to .rds / .h5ad single-cell object.")
     p.add_argument("--fragments", type=Path, default=None,
                    help="Path to fragments.tsv.gz (+ .tbi). Required for ATAC peaks.")
     p.add_argument("--genome", required=True,
@@ -420,12 +420,12 @@ def main(argv: list[str] | None = None) -> int:
         # Lightweight gate: just confirm the input file extension is one
         # of the SC formats. Don't scan the parent dir.
         ext = args.input.suffix.lower()
-        if ext in (".rds", ".h5ad", ".h5mu"):
+        if ext in (".rds", ".h5ad"):
             gate = {"classification": "single-cell",
                     "sc_modality": "pre-coembedded"}
         else:
             print(f"ERROR: --use-existing-clusters requires an SC object "
-                  f"(.rds / .h5ad / .h5mu); got '{ext}'.", file=sys.stderr)
+                  f"(.rds / .h5ad); got '{ext}'.", file=sys.stderr)
             return 2
     else:
         gate = gate_on_detect(args.input, args.fragments)

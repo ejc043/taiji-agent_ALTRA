@@ -42,7 +42,7 @@ suppressPackageStartupMessages({
 
 option_list <- list(
   make_option("--input",        type = "character",
-              help = "Single-cell object (.rds/.h5ad/.h5mu); same one used by load_and_cluster.R."),
+              help = "Single-cell object (.rds/.h5ad); same one used by load_and_cluster.R."),
   make_option("--clusters",     type = "character",
               help = "clusters.csv produced by load_and_cluster.R."),
   make_option("--groups",       type = "character",
@@ -95,12 +95,6 @@ load_input <- function(path) {
       SeuratDisk::Convert(path, dest = "h5seurat", overwrite = FALSE)
     }
     return(SeuratDisk::LoadH5Seurat(h5seurat))
-  }
-  if (ext == "h5mu") {
-    if (!requireNamespace("MuDataSeurat", quietly = TRUE)) {
-      stop("MuDataSeurat required for .h5mu input.")
-    }
-    return(MuDataSeurat::ReadH5MU(path))
   }
   stop("unsupported extension: .", ext)
 }

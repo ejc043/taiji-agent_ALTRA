@@ -1,6 +1,6 @@
 ---
 name: detect-dataset-type
-description: Classify a dataset directory as bulk, single-cell, mixed, or unknown based purely on file extensions and filename patterns. For single-cell, additionally determine whether RNA and ATAC come from the SAME cells (multiome) or DIFFERENT cells (separate-assay, requiring Signac/Seurat co-embedding). Use this skill whenever the user wants to determine, detect, figure out, check, classify, identify, or tell the data type of a directory, folder, or project — especially before deciding which Taiji workflow to run. Bulk signatures are .tsv (RNA-seq), .narrowPeak (ATAC-seq), and .bedpe (HiC); single-cell signatures are .h5ad (AnnData), .rds (Seurat / SingleCellExperiment), .h5mu (MuData), plus 10x cellranger/cellranger-arc filename patterns (fragments.tsv, barcodes.tsv, matrix.mtx, filtered_feature_bc_matrix.h5, etc.). Trigger on phrases like "is this bulk or single-cell", "what kind of data is this", "detect the assay", "classify this dataset", "sc vs bulk", "h5ad or tsv", "multiome or separate", "do I need to co-embed", or anywhere the user needs a pre-flight check before a pipeline.
+description: Classify a dataset directory as bulk, single-cell, mixed, or unknown based purely on file extensions and filename patterns. For single-cell, additionally determine whether RNA and ATAC come from the SAME cells (multiome) or DIFFERENT cells (separate-assay, requiring Signac/Seurat co-embedding). Use this skill whenever the user wants to determine, detect, figure out, check, classify, identify, or tell the data type of a directory, folder, or project — especially before deciding which Taiji workflow to run. Bulk signatures are .tsv (RNA-seq), .narrowPeak (ATAC-seq), and .bedpe (HiC); single-cell signatures are .h5ad (AnnData), .rds (Seurat / SingleCellExperiment), plus 10x cellranger/cellranger-arc filename patterns (fragments.tsv, barcodes.tsv, matrix.mtx, filtered_feature_bc_matrix.h5, etc.). Trigger on phrases like "is this bulk or single-cell", "what kind of data is this", "detect the assay", "classify this dataset", "sc vs bulk", "h5ad or tsv", "multiome or separate", "do I need to co-embed", or anywhere the user needs a pre-flight check before a pipeline.
 ---
 
 # Detect dataset type (bulk vs single-cell, with SC modality sub-classification)
@@ -28,7 +28,7 @@ Downstream consumers (notably `build-taiji-input`) should proceed only on `bulk`
 
 ## Single-cell signatures recognized
 
-**Extensions:** `.h5ad` (AnnData), `.rds` (Seurat / SingleCellExperiment), `.h5mu` (MuData — multi-modal by construction).
+**Extensions:** `.h5ad` (AnnData), `.rds` (Seurat / SingleCellExperiment).
 
 **Filename patterns** (matched case-insensitively as substrings; take priority over bulk extensions to prevent 10x cellranger-arc outputs like `atac_fragments.tsv.gz` from being misclassified as bulk):
 
@@ -43,7 +43,7 @@ Downstream consumers (notably `build-taiji-input`) should proceed only on `bulk`
 
 Tier logic, first match wins:
 
-1. **Any `.h5mu` present** → `multiome` (MuData is multi-modal by construction).
+1. **cellranger-arc signature** (`filtered_feature_bc_matrix.h5` + `atac_fragments.tsv`) → `multiome`.
 2. **cellranger-arc signature**: both `filtered_feature_bc_matrix.h5` and `atac_fragments.tsv` present → `multiome`.
 3. **Explicit multiome token** in any filename (`multiome`, `multi_omic`, `multimodal`, `arc`) → `multiome`.
 4. **Both RNA and ATAC hints** present across filenames (`rna`/`gex`/`expression`/`scrna` AND `atac`/`scatac`/`peak`/`chromatin_accessibility`) → `separate-assay`.
@@ -118,9 +118,9 @@ When a user hands you a directory and asks "what is this":
 1. **Run the classifier first, show the evidence.** Don't guess from the user's phrasing — even if they say "bulk", run the tool and confirm.
 2. **On `mixed`, push back.** Default behavior is to fail; offer the user the three escape hatches in order of preference: (a) split directories, (b) remove the minority files, (c) pass `--allow-mixed` if they really meant to keep both.
 3. **On `single-cell`, redirect based on `sc_modality`.** Don't pretend `build-taiji-input` will work.
-   - **`multiome`**: RNA + ATAC are already paired at the cell level. Route to a single-cell Taiji workflow that consumes paired inputs (e.g. sc-Taiji with MuData/AnnData + fragments). No co-embedding step needed.
+   - **`multiome`**: RNA + ATAC are already paired at the cell level. Route to a single-cell Taiji workflow that consumes paired inputs (e.g. sc-Taiji with AnnData + fragments). No co-embedding step needed.
    - **`separate-assay`**: the user has RNA and ATAC from DIFFERENT cell populations. They MUST co-embed before any downstream regulatory-network work. Point them at Signac's integrate_atac workflow: <https://stuartlab.org/signac/articles/integrate_atac>. The recipe is: quantify the multiome peaks in the scATAC object with `FeatureMatrix`, compute LSI on the scATAC side (TF-IDF → SVD), merge the objects, then `FindIntegrationAnchors(reduction="rlsi")` and `IntegrateEmbeddings()` to produce a shared `integrated_lsi` reduction. Once the datasets share a low-dim embedding, RNA labels/expression can be transferred onto the ATAC cells via `TransferData`/`GeneActivity`, and the combined object is suitable for a single-cell Taiji run.
-   - **`sc-undetermined`**: ask the user explicitly whether this is multiome or separate-assay — don't guess. Rename hint: adding `multiome`, `rna`, or `atac` tokens to filenames (or providing a `.h5mu`) is enough to disambiguate on the next run.
+   - **`sc-undetermined`**: ask the user explicitly whether this is multiome or separate-assay — don't guess. Rename hint: adding `multiome`, `rna`, or `atac` tokens to filenames is enough to disambiguate on the next run.
 4. **On `unknown`, surface the top extensions.** Usually the directory is one level off — the real data is in a sibling folder, or the files are gzipped in a way the classifier didn't catch.
 5. **On `bulk` with the `.tsv`-only warning, probe.** A directory of only `.tsv` files is a weak bulk signature — it could easily be metadata, logs, or a scRNA count matrix that someone exported to TSV. Ask the user to confirm the TSVs are GeneQuant files (gene IDs in column 1) before letting `build-taiji-input` run.
 

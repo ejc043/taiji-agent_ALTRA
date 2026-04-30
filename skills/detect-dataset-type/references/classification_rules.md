@@ -9,7 +9,6 @@
 | `.bedpe`         | bulk         | HiC chromatin loops (6-column paired BED + optional score/metadata). |
 | `.h5ad`          | single-cell  | AnnData / scanpy. HDF5-based, never used for bulk.                 |
 | `.rds`           | single-cell  | R serialized object. In the Taiji context, effectively always Seurat / SingleCellExperiment. |
-| `.h5mu`          | single-cell  | MuData. Multi-modal by construction, so always classified as `sc_modality=multiome`. |
 
 All matching is **case-insensitive** and **.gz-aware**, so `.tsv`, `.TSV`, `.tsv.gz`, `.Narrowpeak.gz`, etc. all match.
 
@@ -36,11 +35,10 @@ When classification is `single-cell`, the result carries an additional `sc_modal
 
 Tier logic, first match wins:
 
-1. **Any `.h5mu` file present** → `multiome`. MuData is designed to hold paired multi-modal data; there is no single-modality use case in this lab's pipelines.
-2. **cellranger-arc signature**: both `filtered_feature_bc_matrix.h5` and `atac_fragments.tsv` present in the scanned tree → `multiome`. This is the canonical 10x Genomics Multiome output layout where RNA and ATAC are profiled from the same cells.
-3. **Explicit multiome token** in any filename — one of `multiome`, `multi_omic`, `multi-omic`, `multimodal`, `arc` → `multiome`. Catches hand-named `.h5ad` / `.rds` files like `pbmc_multiome.h5ad`.
-4. **Both RNA and ATAC hints** across filenames: any of `rna` / `gex` / `expression` / `scrna` / `gene_expression` AND any of `atac` / `scatac` / `peak` / `chromatin_accessibility` → `separate-assay`. The common case: `pbmc_rna.h5ad` + `pbmc_atac.h5ad` in the same directory.
-5. Otherwise → `sc-undetermined`.
+1. **cellranger-arc signature**: both `filtered_feature_bc_matrix.h5` and `atac_fragments.tsv` present in the scanned tree → `multiome`. This is the canonical 10x Genomics Multiome output layout where RNA and ATAC are profiled from the same cells.
+2. **Explicit multiome token** in any filename — one of `multiome`, `multi_omic`, `multi-omic`, `multimodal`, `arc` → `multiome`. Catches hand-named `.h5ad` / `.rds` files like `pbmc_multiome.h5ad`.
+3. **Both RNA and ATAC hints** across filenames: any of `rna` / `gex` / `expression` / `scrna` / `gene_expression` AND any of `atac` / `scatac` / `peak` / `chromatin_accessibility` → `separate-assay`. The common case: `pbmc_rna.h5ad` + `pbmc_atac.h5ad` in the same directory.
+4. Otherwise → `sc-undetermined`.
 
 ### Why tier order matters
 

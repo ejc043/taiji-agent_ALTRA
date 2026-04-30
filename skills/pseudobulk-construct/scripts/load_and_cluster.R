@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # load_and_cluster.R
 #
-# Load a single-cell object (.rds / .h5ad / .h5mu), coerce to Seurat, build a
+# Load a single-cell object (.rds / .h5ad), coerce to Seurat, build a
 # WNN / RNA-only / ATAC-only clustering with a scale-aware resolution search
 # targeting ~target_cluster_size cells/cluster (range [100, 300] by default),
 # drop clusters below the cell-count floor, auto-detect or accept metadata
@@ -13,7 +13,7 @@
 #
 # This is a single-shot CLI. It does no caching. The Python orchestrator
 # handles dependency checks and gating; this script assumes Rscript, Seurat,
-# Signac, optionally SeuratDisk / MuDataSeurat are available.
+# Signac, optionally SeuratDisk are available.
 
 suppressPackageStartupMessages({
   library(optparse)
@@ -28,7 +28,7 @@ suppressPackageStartupMessages({
 # ------------------------------------------------------------------------
 
 option_list <- list(
-  make_option("--input", type = "character", help = "Path to .rds/.h5ad/.h5mu"),
+  make_option("--input", type = "character", help = "Path to .rds/.h5ad"),
   make_option("--output-dir", type = "character"),
   make_option("--signal", type = "character", default = "wnn",
               help = "wnn | rna | atac"),
@@ -81,15 +81,8 @@ load_input <- function(path) {
     }
     return(SeuratDisk::LoadH5Seurat(h5seurat))
   }
-  if (ext == "h5mu") {
-    if (!requireNamespace("MuDataSeurat", quietly = TRUE)) {
-      stop("MuDataSeurat is required for .h5mu input. ",
-           "remotes::install_github('PMBio/MuDataSeurat').")
-    }
-    return(MuDataSeurat::ReadH5MU(path))
-  }
   stop("unsupported input extension: .", ext,
-       " (expected .rds / .h5ad / .h5mu)")
+       " (expected .rds / .h5ad)")
 }
 
 message("[load_and_cluster] loading ", opt$input)
