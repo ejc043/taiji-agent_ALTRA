@@ -119,30 +119,9 @@ Log everything to the workflow log.
 **Single-cell, separate-assay (one .rds RNA + one .rds ATAC, different cells):**
 
 ```
-Run Taiji on the separate-assay dataset:
-  RNA  : data/<your_dataset>/rna.rds
-  ATAC : data/<your_dataset>/atac.rds
-  fragments: data/<your_dataset>/fragments.tsv.gz
-  hg38
-
-Walk through:
-  1. detect-dataset-type → confirm separate-assay
-  2. coembed-construct: anchor-based integration (RNA reference + ATAC
-     query, gene-activity-anchored TransferData → impute RNA → merge →
-     joint PCA/UMAP → cluster on the shared space). Render qc/umap.png
-     (clusters / assay / metadata cols), pause for me to inspect.
-  3. pseudobulk-construct --use-existing-clusters: stratify by
-     <metadata cols>, aggregate RNA from RNA-origin cells only, call
-     ATAC peaks per group via Signac::CallPeaks
-  4. build-taiji-input → taiji-runner → validate GeneRanks.tsv
-
+Run Taiji in `data/<your_dataset>/`, hg38. 
 Log everything to the workflow log.
 ```
-
-Single-cell preconditions:
-- **De novo clusters are fine; reference-derived cell-type labels are not auto-applied.** If you want named cell types ("CD4 T cell", etc.), assign them upstream via `TransferData(refdata = <atlas>$cell_types)` and pass the column through `--metadata-cols`. The skill won't pick a reference atlas for you.
-- **Fragments file must be bgzipped + tabix-indexed** (`.tbi` sibling present).
-- **Barcodes in the object's ATAC assay must match the fragments file** — the skill auto-strips common suffixes (`-1`, `_1`, `ATAC_…`) and requires ≥95% overlap; fails loudly otherwise.
 
 Claude reads `CLAUDE.md` (auto-loaded from cwd), sees the seven skills + the verified RA_11 baseline, and chains:
 
