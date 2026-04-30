@@ -68,9 +68,9 @@ Place one file per sample per assay under a single flat directory. File-naming c
 |-------|-----------|--------|--------|
 | RNA-seq | `.tsv` | GeneQuant | 2-column, **no header**: `gene_symbol<TAB>expression_value` |
 | ATAC-seq | `.narrowPeak` | ENCODE BED6+4 | 10-column standard MACS2/MACS3 output |
-| HiC *(optional)* | `.bedpe` | ChromosomeLoop | 6-column: `chr1 start1 end1 chr2 start2 end2` |
+| HiC *(optional)* | `.bedpe` | ChromosomeLoop | 6-column: `chr1 start1 end1 chr2 start2 end2`. If omitted, vendored EpiTensor HiC predictions for the genome (hg19, hg38, mm10) are used automatically. |
 
-RNA and ATAC are both required per sample; HiC is optional but improves TF→target edge accuracy. If no HiC is provided, vendored EpiTensor HiC predictions for the respective genome (hg19, hg38, mm10) are used automatically.
+RNA and ATAC are both required per sample; HiC is optional but improves TF→target edge accuracy.
 
 `detect-dataset-type` will emit `MISSING REQUIRED` warnings for any absent modality when it classifies a directory as bulk. `build-taiji-input` will error (strict mode, default) or warn-and-skip (--no-strict) if a pattern resolves to a path that doesn't exist.
 
@@ -81,6 +81,8 @@ RNA and ATAC are both required per sample; HiC is optional but improves TF→tar
 | `.rds` | Seurat (v5) or SingleCellExperiment | direct R `readRDS` | RNA-only / ATAC-only / multiome / separate-assay |
 | `.h5ad` | AnnData (Python) | via `SeuratDisk::Convert` | typically RNA-only or separate-assay |
 | `.h5mu` | MuData (Python) | via `MuDataSeurat` | always treated as multiome |
+
+HiC is not a direct input for single-cell workflows — it enters via `build-taiji-input` after pseudobulking. If no HiC is supplied at that stage, vendored EpiTensor predictions for the genome are used automatically (same fallback as bulk).
 
 **Required companion for any ATAC processing:**
 
