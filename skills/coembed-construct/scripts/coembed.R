@@ -582,7 +582,19 @@ if (Sys.info()[["sysname"]] == "Darwin") {
 ensdb <- load_ensdb(opt$genome)
 message("[coembed] pulling gene annotations from EnsDb (", opt$genome, ") ...")
 annotations <- GetGRangesFromEnsDb(ensdb = ensdb)
-seqlevelsStyle(annotations) <- "UCSC"
+# seqlevelsStyle<- may attempt a UCSC network fetch on HPC nodes without
+# internet. Fall back to manual chr-prefix renaming if it fails.
+tryCatch(
+  seqlevelsStyle(annotations) <- "UCSC",
+  error = function(e) {
+    message("[coembed]   WARN: seqlevelsStyle UCSC network fetch failed (", conditionMessage(e), ").")
+    message("[coembed]   Falling back to manual Ensembl -> UCSC chromosome rename.")
+    lvls <- seqlevels(annotations)
+    new_lvls <- ifelse(grepl("^chr", lvls), lvls,
+                       ifelse(lvls == "MT", "chrM", paste0("chr", lvls)))
+    seqlevels(annotations) <<- new_lvls
+  }
+)
 genome(annotations) <- opt$genome
 Annotation(atac) <- annotations
 

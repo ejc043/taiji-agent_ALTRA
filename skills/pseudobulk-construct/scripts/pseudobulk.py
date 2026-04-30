@@ -52,7 +52,8 @@ def _attach_log():
 
 
 def _summarize_run(args, gate: dict, groups: list[dict],
-                   plan: dict, manifest_path: Path) -> dict:
+                   plan: dict, manifest_path: Path,
+                   peak_stats: dict | None = None) -> dict:
     """Pull together the dict that gets logged to workflow-log."""
     trace_path = args.output_dir / "resolution_trace.json"
     trace = {}
@@ -82,6 +83,7 @@ def _summarize_run(args, gate: dict, groups: list[dict],
         "coembedding_required": gate.get("sc_modality") == "separate-assay",
         "gate_classification":  gate.get("classification"),
         "gate_sc_modality":     gate.get("sc_modality"),
+        **({"peak_stats": peak_stats} if peak_stats else {}),
     }
 
 
@@ -383,6 +385,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
                    help="Plan only: validate inputs and print the resolved "
                         "plan (no R/MACS invocations). Useful for checking "
                         "the wiring before submitting a long SLURM job.")
+    p.add_argument("--optimal-k-method", default="multik",
+                   choices=["multik", "heuristic"],
+                   help="K selection method for WNN clustering. 'multik' "
+                        "(default) runs consensus subsampling (MultiK algorithm) "
+                        "to pick K objectively. 'heuristic' targets "
+                        "--target-cluster-size cells/cluster. Ignored for "
+                        "--signal rna/atac (always heuristic) and "
+                        "--use-existing-clusters (skipped).")
+    p.add_argument("--multik-reps", type=int, default=100,
+                   help="Number of subsampling reps for MultiK (default: 100). "
+                        "Lower values (e.g. 50) reduce runtime on large datasets.")
     p.add_argument("--no-plot", action="store_true",
                    help="Skip the QC UMAP rendering in load_and_cluster.R "
                         "(default: write qc/umap.png with panels for clusters, "
@@ -420,7 +433,9 @@ def main(argv: list[str] | None = None) -> int:
         # Lightweight gate: just confirm the input file extension is one
         # of the SC formats. Don't scan the parent dir.
         ext = args.input.suffix.lower()
-        if ext in (".rds", ".h5ad"):
+        if ext in (".rds", ".h5ad") or (ext == "" and args.input.exists()):
+            # Accept extensionless files when the user explicitly asserts
+            # this is a co-embedded SC object via --use-existing-clusters.
             gate = {"classification": "single-cell",
                     "sc_modality": "pre-coembedded"}
         else:
@@ -465,6 +480,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  clustering signal   : {signal}", file=sys.stderr)
         print(f"  use-existing-clusters: {args.use_existing_clusters}",
               file=sys.stderr)
+        print(f"  optimal-k-method    : {args.optimal_k_method}", file=sys.stderr)
+        print(f"  multik-reps         : {args.multik_reps}", file=sys.stderr)
         print(f"  metadata cols       : {args.metadata_cols or '(auto-detect)'}",
               file=sys.stderr)
         print(f"  cohort col          : {args.cohort_col or '(first metadata col)'}",
@@ -505,6 +522,8 @@ def main(argv: list[str] | None = None) -> int:
         *( ["--use-existing-clusters"] if args.use_existing_clusters else [] ),
         *( ["--yes"] if args.yes else [] ),
         *( ["--no-plot"] if args.no_plot else [] ),
+        "--optimal-k-method", args.optimal_k_method,
+        "--multik-reps", str(args.multik_reps),
     )
 
     # 4. Read the per-group plan the R script wrote.
@@ -563,6 +582,25 @@ def main(argv: list[str] | None = None) -> int:
             if narrow.exists() and narrow.stat().st_size > 0:
                 g["atac_seq"] = str(narrow)
 
+    # 6b. Read peak stats written by call_peaks.R into _index.json.
+    peak_stats: dict | None = None
+    if not args.rna_only and args.fragments is not None:
+        index_path = args.output_dir / "atac" / "_index.json"
+        if index_path.exists():
+            try:
+                with index_path.open() as fh:
+                    idx = json.load(fh)
+                peak_stats = idx.get("peak_stats")
+                if peak_stats:
+                    print(
+                        f"[pseudobulk] peak count across {peak_stats.get('n_groups')} groups: "
+                        f"mean = {peak_stats.get('mean_peaks')}, "
+                        f"sd = {peak_stats.get('sd_peaks')}",
+                        file=sys.stderr,
+                    )
+            except Exception:
+                pass
+
     # 7. Write the build-taiji-input manifest.
     manifest = write_manifest(args.output_dir, groups, args.genome)
     print(f"[pseudobulk] manifest written: {manifest}", file=sys.stderr)
@@ -577,7 +615,8 @@ def main(argv: list[str] | None = None) -> int:
     log = _attach_log()
     if log is not None:
         try:
-            log.append_pseudobulk(_summarize_run(args, gate, groups, plan, manifest))
+            log.append_pseudobulk(
+                _summarize_run(args, gate, groups, plan, manifest, peak_stats))
         except Exception:
             pass
 

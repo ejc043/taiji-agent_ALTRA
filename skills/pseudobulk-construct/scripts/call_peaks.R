@@ -23,9 +23,12 @@
 #      when both RNA and ATAC sides of a co-embedded object share bare
 #      barcodes), attach a fragment-restricted CreateFragmentObject, and call
 #      Signac::CallPeaks.
-#   5. Write <group>_peaks.rds and <group>.narrowPeak (ENCODE 10-col format).
+#   5. Write rds/<group>_peaks.rds and <group>.narrowPeak (ENCODE 10-col format).
+#      The RDS files go into a rds/ subdirectory so that the atac/ output
+#      directory stays narrowPeak-only (detect-dataset-type would otherwise
+#      flag the directory as mixed bulk+SC).
 #
-# Idempotent: a group whose <group>_peaks.rds already exists is skipped, so
+# Idempotent: a group whose rds/<group>_peaks.rds already exists is skipped, so
 # partial reruns don't redo expensive macs invocations.
 
 suppressPackageStartupMessages({
@@ -73,6 +76,7 @@ if (!file.exists(opt$fragments)) {
   stop("fragments file not found: ", opt$fragments)
 }
 dir.create(opt$`output-dir`, recursive = TRUE, showWarnings = FALSE)
+dir.create(file.path(opt$`output-dir`, "rds"), recursive = TRUE, showWarnings = FALSE)
 
 # ---------------------------------------------------------------------------
 # Object loader (kept in lock-step with the loaders in the sibling R scripts;
@@ -239,25 +243,92 @@ pick_atac_assay <- function(obj) {
 }
 
 # ---------------------------------------------------------------------------
+# Per-group fragment extraction
+# ---------------------------------------------------------------------------
+# Signac::CallPeaks passes the full fragment file path to MACS3 without
+# barcode filtering. For group-specific peaks and fast runtimes, we pre-filter
+# the fragment file to each group's cells using zcat|awk, then call MACS3
+# directly on the cell-specific BED.
+
+extract_group_frags <- function(frags_path, barcodes, tmp_bed) {
+  bc_file <- tempfile(fileext = ".txt")
+  on.exit(unlink(bc_file), add = TRUE)
+  writeLines(barcodes, bc_file)
+  cmd <- sprintf(
+    "zcat %s | awk -v bcfile=%s 'BEGIN{while((getline l<bcfile)>0) keep[l]=1} $4 in keep {print $1\"\\t\"$2\"\\t\"$3}' > %s",
+    shQuote(frags_path), shQuote(bc_file), shQuote(tmp_bed)
+  )
+  rc <- system(cmd, ignore.stdout = FALSE, ignore.stderr = FALSE)
+  if (rc != 0) return(0L)
+  if (!file.exists(tmp_bed)) return(0L)
+  nlines <- tryCatch(
+    as.integer(system(sprintf("wc -l < %s", shQuote(tmp_bed)), intern = TRUE)),
+    error = function(e) 0L
+  )
+  nlines
+}
+
+# Call MACS3/MACS2 directly on a BED file. Returns a data.frame in narrowPeak
+# format, or NULL on failure. Matches Signac's defaults: nomodel, extsize=200,
+# shift=-100, format=BED.
+call_macs_on_bed <- function(tmp_bed, macs_path, gsize, group_name) {
+  tmp_outdir <- tempfile(pattern = "macs_out_")
+  dir.create(tmp_outdir, showWarnings = FALSE)
+  on.exit(unlink(tmp_outdir, recursive = TRUE), add = TRUE)
+
+  cmd <- sprintf(
+    "%s callpeak -t %s -g %.2e -f BED --nomodel --extsize 200 --shift -100 -n peaks --outdir %s 2>&1",
+    shQuote(macs_path), shQuote(tmp_bed), gsize, shQuote(tmp_outdir)
+  )
+  rc <- system(cmd)
+  np_file <- file.path(tmp_outdir, "peaks_peaks.narrowPeak")
+  if (rc != 0 || !file.exists(np_file) || file.size(np_file) == 0) {
+    return(NULL)
+  }
+  df <- tryCatch(
+    read.table(np_file, sep = "\t", stringsAsFactors = FALSE, header = FALSE),
+    error = function(e) NULL
+  )
+  if (is.null(df) || nrow(df) == 0) return(NULL)
+  colnames(df) <- c("chrom","chromStart","chromEnd","name","score","strand",
+                    "signalValue","pValue","qValue","peak")
+  df
+}
+
+# Build a minimal GRanges from a narrowPeak data.frame (for the _peaks.rds).
+narrowpeak_df_to_granges <- function(df) {
+  if (is.null(df) || nrow(df) == 0) return(GRanges())
+  GRanges(
+    seqnames  = df$chrom,
+    ranges    = IRanges(df$chromStart + 1L, df$chromEnd),
+    name      = df$name,
+    score     = df$score,
+    fold_change                = df$signalValue,
+    neg_log10pvalue_summit     = df$pValue,
+    neg_log10qvalue_summit     = df$qValue,
+    relative_summit_position   = df$peak
+  )
+}
+
+# ---------------------------------------------------------------------------
 # Per-group worker
 # ---------------------------------------------------------------------------
 
 call_peaks_one <- function(g, obj, clusters_df, atac_assay, frag_bcs,
                            macs_path, gsize, output_dir, min_overlap) {
-  out_rds  <- file.path(output_dir, sprintf("%s_peaks.rds", g$name))
+  out_rds  <- file.path(output_dir, "rds", sprintf("%s_peaks.rds", g$name))
   out_peak <- file.path(output_dir, sprintf("%s.narrowPeak", g$name))
 
   # Idempotency: skip if both outputs are present and non-empty.
   if (file.exists(out_rds) && file.exists(out_peak) && file.size(out_peak) > 0) {
+    n_existing <- as.integer(system(
+      sprintf("wc -l < %s", shQuote(out_peak)), intern = TRUE))
     message("[call_peaks] group ", g$name,
-            " already has outputs; skipping.")
-    return(out_peak)
+            " already has outputs (", n_existing, " peaks); skipping.")
+    return(list(path = out_peak, n_peaks = n_existing))
   }
 
-  # Resolve the cell set for this group from clusters.csv. Group spec
-  # carries metadata as a named list/dict {col: val, ...} (or NULL when
-  # no metadata stratification was requested); compose the filter from
-  # all key-value pairs.
+  # Resolve the cell set for this group from clusters.csv.
   cl <- as.character(g$cluster)
   metadata <- g$metadata
   sel <- as.character(clusters_df$seurat_cluster) == cl
@@ -275,8 +346,7 @@ call_peaks_one <- function(g, obj, clusters_df, atac_assay, frag_bcs,
   }
   cells <- clusters_df$barcode[sel]
 
-  # Restrict to ATAC-side cells in a co-embedded object, when an `assay`
-  # meta.data flag exists. Otherwise use cells present in the ATAC assay.
+  # Restrict to ATAC-side cells in a co-embedded object.
   obj_md <- obj@meta.data
   obj_md$.barcode <- rownames(obj_md)
   if (opt$`assay-col` %in% colnames(obj_md)) {
@@ -287,65 +357,47 @@ call_peaks_one <- function(g, obj, clusters_df, atac_assay, frag_bcs,
     cells <- intersect(cells, Cells(obj[[atac_assay]]))
   }
   if (length(cells) == 0) {
-    warning("[call_peaks] group ", g$name,
-            ": no ATAC cells match; skipping.")
+    warning("[call_peaks] group ", g$name, ": no ATAC cells match; skipping.")
     return(NULL)
   }
 
-  message(sprintf("[call_peaks] group %s: %d ATAC cells",
-                  g$name, length(cells)))
+  message(sprintf("[call_peaks] group %s: %d ATAC cells", g$name, length(cells)))
 
-  # Reconcile barcodes against fragments before subsetting (so we know the
-  # rename map up-front).
   rec <- reconcile_barcodes(cells, frag_bcs, min_overlap, g$name)
 
-  # Subset → restrict to ATAC assay → rename to fragment-aligned barcodes.
-  obj_sub <- subset(obj, cells = cells)
-  DefaultAssay(obj_sub) <- atac_assay
-  # Rename only the subset object (avoids duplicate-name collisions when
-  # both RNA and ATAC sides of a co-embedded object share bare barcodes).
-  obj_sub <- RenameCells(obj_sub, new.names = rec$new_cells)
+  # Pre-filter fragments to this group's barcodes. Signac::CallPeaks passes
+  # the raw fragment file path to MACS3 without barcode-level filtering;
+  # writing a cell-specific temp BED ensures MACS3 sees only this group's reads.
+  tmp_bed <- tempfile(pattern = sprintf("frags_%s_", gsub("[^A-Za-z0-9]","_",g$name)),
+                      fileext = ".bed")
+  on.exit(unlink(tmp_bed), add = TRUE)
 
-  # Attach a fragment object scoped to just this group's cells.
-  frags <- CreateFragmentObject(path = opt$fragments, cells = rec$new_cells)
-  Fragments(obj_sub) <- NULL
-  Fragments(obj_sub) <- frags
+  n_frags <- extract_group_frags(opt$fragments, rec$new_cells, tmp_bed)
+  message(sprintf("[call_peaks]   extracted %d fragments for %d cells",
+                  n_frags, length(rec$new_cells)))
 
-  # Tag everyone in the subset with one ident so Signac::CallPeaks emits a
-  # single peak set for this group.
-  Idents(obj_sub) <- factor(rep(g$name, ncol(obj_sub)))
+  if (n_frags == 0) {
+    warning("[call_peaks] group ", g$name,
+            ": no fragments extracted; skipping (barcodes not in fragments file?).")
+    return(NULL)
+  }
 
-  message("[call_peaks] group ", g$name, ": running Signac::CallPeaks ...")
-  peaks <- tryCatch(
-    Signac::CallPeaks(
-      object                = obj_sub,
-      macs2.path            = macs_path,
-      effective.genome.size = gsize,
-      combine.peaks         = TRUE
-    ),
-    error = function(e) {
-      warning("[call_peaks] group ", g$name, ": CallPeaks failed: ",
-              conditionMessage(e), " — leaving narrowPeak unwritten.")
-      NULL
-    }
-  )
+  # Call MACS3 directly on the cell-filtered BED.
+  message("[call_peaks] group ", g$name, ": calling MACS3 on filtered BED ...")
+  np_df <- call_macs_on_bed(tmp_bed, macs_path, gsize, g$name)
 
-  if (is.null(peaks) || length(peaks) == 0) {
+  if (is.null(np_df) || nrow(np_df) == 0) {
     warning("[call_peaks] group ", g$name, ": no peaks returned.")
     return(NULL)
   }
 
-  saveRDS(peaks, out_rds)
-  df <- peaks_to_narrowpeak_df(peaks)
-  if (is.null(df)) {
-    warning("[call_peaks] group ", g$name, ": empty peak set; not writing narrowPeak.")
-    return(NULL)
-  }
-  write.table(df, file = out_peak, sep = "\t",
+  peaks_gr <- narrowpeak_df_to_granges(np_df)
+  saveRDS(peaks_gr, out_rds)
+  write.table(np_df, file = out_peak, sep = "\t",
               col.names = FALSE, row.names = FALSE, quote = FALSE)
-  message("[call_peaks] group ", g$name, ": wrote ", nrow(df),
+  message("[call_peaks] group ", g$name, ": wrote ", nrow(np_df),
           " peaks -> ", basename(out_peak))
-  out_peak
+  list(path = out_peak, n_peaks = nrow(np_df))
 }
 
 # ---------------------------------------------------------------------------
@@ -378,12 +430,33 @@ for (g in groups_plan$groups) {
     }
   )
   if (!is.null(out)) {
-    written[[length(written) + 1]] <- list(name = g$name, path = out)
+    written[[length(written) + 1]] <- list(
+      name    = g$name,
+      path    = out$path,
+      n_peaks = out$n_peaks
+    )
   }
 }
 
+peak_counts <- sapply(written, function(x) x$n_peaks)
+peak_stats <- if (length(peak_counts) > 0) {
+  list(
+    n_groups   = length(peak_counts),
+    mean_peaks = round(mean(peak_counts, na.rm = TRUE), 1),
+    sd_peaks   = round(sd(peak_counts, na.rm = TRUE), 1)
+  )
+} else {
+  list(n_groups = 0L, mean_peaks = NA, sd_peaks = NA)
+}
+
+message(sprintf(
+  "[call_peaks] peak count summary across %d groups: mean = %.1f, sd = %.1f",
+  peak_stats$n_groups, peak_stats$mean_peaks, peak_stats$sd_peaks
+))
+
 writeLines(
-  toJSON(written, pretty = TRUE, auto_unbox = TRUE),
+  toJSON(list(groups = written, peak_stats = peak_stats),
+         pretty = TRUE, auto_unbox = TRUE),
   file.path(opt$`output-dir`, "_index.json")
 )
 

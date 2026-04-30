@@ -65,7 +65,11 @@ if (!"RNA" %in% Assays(obj)) {
   stop("no RNA assay found; cannot aggregate raw counts. ",
        "If this is an ATAC-only object, rerun the parent with --atac-only.")
 }
-counts <- GetAssayData(obj, assay = "RNA", slot = "counts")
+# Seurat v5 replaced slot= with layer=; fall back gracefully for v4 objects.
+counts <- tryCatch(
+  GetAssayData(obj, assay = "RNA", layer = "counts"),
+  error = function(e) GetAssayData(obj, assay = "RNA", slot = "counts")
+)
 if (!inherits(counts, "dgCMatrix") && !inherits(counts, "Matrix")) {
   counts <- as(counts, "CsparseMatrix")
 }

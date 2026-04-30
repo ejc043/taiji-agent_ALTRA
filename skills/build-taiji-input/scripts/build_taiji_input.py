@@ -157,8 +157,9 @@ def load_genomes(config_path: Path) -> dict[str, GenomeEntry]:
 
 def load_samples(csv_path: Path) -> list[SampleRow]:
     rows: list[SampleRow] = []
+    delimiter = "\t" if csv_path.suffix.lower() in (".tsv", ".tab") else ","
     with csv_path.open(newline="") as fh:
-        reader = csv.DictReader(fh)
+        reader = csv.DictReader(fh, delimiter=delimiter)
         missing = {"group", "cohort"} - set(reader.fieldnames or ())
         if missing:
             raise SystemExit(
@@ -492,7 +493,12 @@ def main(argv: list[str] | None = None) -> int:
                 file=sys.stderr,
             )
         else:
-            detect_result = detector([args.data_dir], recursive=True, strict_mixed=True)
+            # Use non-recursive scan: pseudobulk output directories have
+            # _peaks.rds files inside atac/rds/ that would falsely trigger
+            # the mixed-dataset gate when scanning recursively. The actual
+            # bulk files (.tsv, .narrowPeak) live in subdirectories anyway,
+            # so the top-level scan still catches stray SC objects.
+            detect_result = detector([args.data_dir], recursive=False, strict_mixed=True)
             if detect_result.classification == "single-cell":
                 modality = getattr(detect_result, "sc_modality", None)
                 modality_note = {

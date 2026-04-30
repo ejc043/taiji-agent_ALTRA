@@ -23,6 +23,17 @@ suppressPackageStartupMessages({
   library(dplyr)
 })
 
+# Source sibling MultiK helper (same directory as this script).
+local({
+  args      <- commandArgs(trailingOnly = FALSE)
+  file_flag <- grep("^--file=", args, value = TRUE)
+  script_dir <- if (length(file_flag))
+    dirname(normalizePath(sub("^--file=", "", file_flag[1])))
+  else
+    getwd()
+  source(file.path(script_dir, "multik_optimal_k.R"), local = FALSE)
+})
+
 # ------------------------------------------------------------------------
 # CLI
 # ------------------------------------------------------------------------
@@ -42,6 +53,10 @@ option_list <- list(
               help = "Which metadata column's value becomes the manifest 'cohort' label. Default: first --metadata-cols entry."),
   make_option("--use-existing-clusters", action = "store_true", default = FALSE,
               help = "Skip clustering. Read seurat_clusters from the input object's @meta.data and use the existing UMAP reduction (or compute one from the existing PCA). Use this when the input is a coembed-construct output that's already been clustered on a shared embedding — re-clustering on a single modality's LSI/PCA would discard the joint structure."),
+  make_option("--optimal-k-method", type = "character", default = "multik",
+              help = "multik (default) | heuristic. multik runs consensus subsampling to pick K objectively; heuristic targets ~target-cluster-size cells/cluster. MultiK only applies to --signal wnn; RNA/ATAC always use heuristic."),
+  make_option("--multik-reps", type = "integer", default = 100L,
+              help = "Subsampling reps for MultiK (default 100)."),
   make_option("--no-plot", action = "store_true", default = FALSE,
               help = "Skip the QC UMAP rendering step (default: write qc/umap.png)."),
   make_option("--yes", action = "store_true", default = FALSE)
@@ -203,6 +218,48 @@ binary_search_resolution <- function(obj,
   list(obj = obj_try, resolution = r, trace = trace)
 }
 
+# Binary search for the Louvain resolution that produces exactly target_k
+# clusters on the full WNN graph. Used by the MultiK path.
+find_resolution_for_k <- function(obj, graph_name, target_k,
+                                   max_iter = 15L) {
+  lo <- 0.01; hi <- 5.0
+  # Seed: rough log-scale heuristic (empirically calibrated for wsnn graphs).
+  r <- min(max(0.25 * log2(max(2L, target_k)), lo), hi)
+  best_obj <- NULL; best_res <- r; best_dist <- Inf
+  trace <- list()
+
+  for (i in seq_len(max_iter)) {
+    obj_try <- FindClusters(obj, graph.name = graph_name,
+                            resolution = r, verbose = FALSE)
+    n_clust <- length(unique(Idents(obj_try)))
+    dist_k  <- abs(n_clust - target_k)
+    trace[[length(trace) + 1L]] <- list(
+      iter = i, resolution = r, n_clusters = as.integer(n_clust))
+    message(sprintf(
+      "[load_and_cluster] K-target=%d | iter %d: res=%.3f -> %d clusters",
+      target_k, i, r, n_clust))
+
+    if (dist_k < best_dist) {
+      best_dist <- dist_k; best_obj <- obj_try; best_res <- r
+    }
+    if (n_clust == target_k) break
+
+    if (n_clust < target_k) {
+      lo <- r; r <- if (hi < 5.0) 0.5 * (r + hi) else min(r * 1.5, hi)
+    } else {
+      hi <- r; r <- if (lo > 0.01) 0.5 * (r + lo) else max(r * 0.67, lo)
+    }
+  }
+
+  if (best_dist > 0L)
+    warning(sprintf(
+      "[load_and_cluster] K-target=%d not reached exactly; closest K=%d at res=%.3f",
+      target_k,
+      length(unique(Idents(best_obj))), best_res))
+
+  list(obj = best_obj, resolution = best_res, trace = trace)
+}
+
 # ------------------------------------------------------------------------
 # Run the chosen clustering signal
 # ------------------------------------------------------------------------
@@ -292,19 +349,81 @@ if (!opt$`use-existing-clusters` && opt$signal == "atac") {
 # ------------------------------------------------------------------------
 # Skipped when --use-existing-clusters: res_result was set above with the
 # pre-clustered object and a sentinel trace.
+#
+# Two paths:
+#   multik  (default, WNN only): consensus subsampling selects optimal K,
+#            then find_resolution_for_k() homes in on that K on the full graph.
+#   heuristic: binary search targeting ~target-cluster-size cells/cluster.
+#
+# MultiK only applies to WNN; RNA/ATAC always use heuristic.
+
+multik_result <- NULL  # populated below when MultiK runs
+
 if (!opt$`use-existing-clusters`) {
-  res_result <- binary_search_resolution(
-    obj, graph_name, n_cells, opt$`target-cluster-size`)
+  use_multik <- opt$signal == "wnn" &&
+                tolower(opt$`optimal-k-method`) == "multik"
+
+  if (use_multik) {
+    message(sprintf(
+      "[load_and_cluster] MultiK consensus clustering (%d reps x %d resolutions)...",
+      opt$`multik-reps`, length(seq(0.05, 2.0, by = 0.1))))
+
+    multik_result <- tryCatch(
+      multik_optimal_k(
+        obj@graphs[[graph_name]],
+        n_reps  = opt$`multik-reps`,
+        verbose = TRUE),
+      error = function(e) {
+        warning("[load_and_cluster] MultiK failed — falling back to heuristic.\n  ",
+                conditionMessage(e))
+        NULL
+      }
+    )
+
+    if (!is.null(multik_result)) {
+      writeLines(
+        toJSON(multik_result$diagnostics, pretty = TRUE, auto_unbox = TRUE),
+        file.path(output_dir, "multik_diagnostics.json")
+      )
+      res_result <- find_resolution_for_k(
+        obj, graph_name, multik_result$optimal_k)
+    } else {
+      res_result <- binary_search_resolution(
+        obj, graph_name, n_cells, opt$`target-cluster-size`)
+    }
+  } else {
+    res_result <- binary_search_resolution(
+      obj, graph_name, n_cells, opt$`target-cluster-size`)
+  }
+
   obj <- res_result$obj
 }
 
-# Write the trace for audit.
+# Write resolution trace for audit.
+trace_extra <- list()
+if (!is.null(multik_result)) {
+  opt_k_str <- as.character(multik_result$optimal_k)
+  trace_extra <- list(
+    optimal_k_method  = "multik",
+    multik_optimal_k  = multik_result$optimal_k,
+    multik_pac_score  = multik_result$pac_scores[[opt_k_str]]
+  )
+} else if (!opt$`use-existing-clusters` &&
+           tolower(opt$`optimal-k-method`) == "multik" &&
+           opt$signal == "wnn") {
+  trace_extra <- list(optimal_k_method = "multik_fallback_heuristic")
+} else {
+  trace_extra <- list(
+    optimal_k_method = if (opt$`use-existing-clusters`) "skipped"
+                       else opt$`optimal-k-method`)
+}
 writeLines(
-  toJSON(list(signal = opt$signal,
-              target_cluster_size = opt$`target-cluster-size`,
-              chosen_resolution = res_result$resolution,
-              n_cells = n_cells,
-              iterations = res_result$trace),
+  toJSON(c(list(signal              = opt$signal,
+               target_cluster_size = opt$`target-cluster-size`,
+               chosen_resolution   = res_result$resolution,
+               n_cells             = n_cells,
+               iterations          = res_result$trace),
+           trace_extra),
          pretty = TRUE, auto_unbox = TRUE),
   file.path(output_dir, "resolution_trace.json")
 )
@@ -546,6 +665,15 @@ message("[load_and_cluster] done. ",
 # Cheap to compute (a few seconds for ≤100k cells); easy to skip via
 # --no-plot if the user is iterating on a CI box without a graphics stack.
 # Degrades gracefully when ggplot2 / patchwork aren't installed.
+
+if (!opt$`no-plot` && !is.null(multik_result)) {
+  qc_dir_mk <- file.path(output_dir, "qc")
+  dir.create(qc_dir_mk, recursive = TRUE, showWarnings = FALSE)
+  plot_multik_diagnostics(
+    multik_result$diagnostics,
+    file.path(qc_dir_mk, "multik_diag.png")
+  )
+}
 
 if (!opt$`no-plot`) {
   if (!requireNamespace("ggplot2", quietly = TRUE)) {

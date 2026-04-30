@@ -256,6 +256,13 @@ def main(argv: list[str] | None = None) -> int:
     except (OSError, ValueError):
         pass  # symlink resolution can fail; convention check is advisory
 
+    # Ensure the output path ends with .rds so downstream skills (pseudobulk,
+    # detect-dataset-type) can recognise it by extension.
+    if args.output.suffix.lower() != ".rds":
+        args.output = args.output.with_suffix(args.output.suffix + ".rds")
+        print(f"[coembed] NOTE: appending .rds to output path -> {args.output}",
+              file=sys.stderr)
+
     # Output dir setup.
     args.output.parent.mkdir(parents=True, exist_ok=True)
 

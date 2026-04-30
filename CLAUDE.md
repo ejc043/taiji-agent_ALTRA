@@ -16,6 +16,7 @@ skills/                 Plugin-style skills (the bulk of the project's logic liv
   detect-dataset-type/      classifies a directory as bulk/SC/mixed/unknown + SC sub-modality
   fetch-references/         idempotent stager for FASTA + GTF + MEME (per genome)
   pseudobulk-construct/     bridges single-cell objects to bulk-Taiji inputs
+  sc-qc/                    cell-level QC filtering (nFeature/nCount/percent.mt/TSS/nucleosome/blacklist)
   taiji-runner/             per-sample Taiji 1.3.0 orchestrator (xlsx → per-sample TSVs/configs → taiji run per sample)
   workflow-log/             per-run audit log (md + jsonl) auto-attached by sibling skills
   taiji/                    EMPTY placeholder for future umbrella skill
@@ -40,7 +41,23 @@ pyproject.toml          declares the `taiji-agent` package + `taiji-agent` CLI e
 
 ## Skills currently built
 
-Seven production skills, all chainable end-to-end. The `taiji/` directory is reserved for a future umbrella skill but is empty today. For per-skill details — full input flags, output schemas, edge cases — read `skills/<name>/SKILL.md` and `skills/<name>/references/`.
+Eight production skills, all chainable end-to-end. The `taiji/` directory is reserved for a future umbrella skill but is empty today. For per-skill details — full input flags, output schemas, edge cases — read `skills/<name>/SKILL.md` and `skills/<name>/references/`.
+
+### `sc-qc` — cell-level QC filtering
+
+Applies per-cell quality filters to a Seurat object (RNA-only, ATAC-only, multiome same-cell, or co-embedded separate-cell) before it enters `coembed-construct` or `pseudobulk-construct`. This is the step the repo previously left entirely user-side.
+
+Auto-detects modality from the object: `rna` (RNA assay only), `atac` (ATAC/peaks assay only), `multiome` (both assays, same cells — keeps intersection passing both filter sets), `coembed` (both assays, `meta.data$assay ∈ {RNA, ATAC}` — splits by origin, filters each separately, recombines).
+
+**RNA filters:** `nFeature_RNA` min/max, `nCount_RNA` min, `percent.mt` max. `percent.mt` is auto-computed if absent.
+
+**ATAC filters:** `nCount_<assay>` min, `nFeature_<assay>` min, `TSS.enrichment` min, `nucleosome_signal` max, `blacklist_ratio` max. Metrics absent from `meta.data` are **skipped with a warning** — they must be pre-computed upstream (Signac's `TSSEnrichment()`, `NucleosomeSignal()`, `FractionCountsInRegion()`).
+
+Supports single-file mode (`--input`) and dual-file mode (`--rna-input` / `--atac-input`) for filtering separate RNA + ATAC objects before co-embedding.
+
+Outputs: `filtered.rds` (or `rna_filtered.rds` + `atac_filtered.rds`), `qc_summary.json` (cells before/after per filter, marginal removal counts), `qc/violin_*_{before,after}.png`.
+
+Explicit limitations: no doublet detection (run Scrublet/DoubletFinder upstream); fixed thresholds only (no MAD-based adaptive cutoffs).
 
 ### `detect-dataset-type` — pre-flight classifier
 
@@ -56,6 +73,11 @@ Constructs the input xlsx (`Active` + `active_metadata` sheets) the bulk Taiji b
 
 Pre-flight gate soft-imports `detect-dataset-type` and refuses SC inputs with modality-specific guidance (multiome → sc-Taiji; separate-assay → coembed-construct; sc-undetermined → ask user to disambiguate). Degrades to warning if the sibling skill isn't installed.
 
+**Three build-taiji-input bugs fixed (2026-04-30 small-test run):**
+1. **`_peaks.rds` in `atac/` triggered the mixed-dataset detector** — `call_peaks.R` previously saved GRanges RDS files next to `.narrowPeak` files in `atac/`; the recursive `detect-dataset-type` scan saw `.rds` (SC) + `.narrowPeak`/`.tsv` (bulk) and refused. Fixed by: (a) saving `.rds` files to `atac/rds/` in `call_peaks.R`, and (b) switching `build-taiji-input`'s detect scan from `recursive=True` to `recursive=False` (top-level only avoids the `atac/rds/` subdir; the manifest `manifest.tsv` at the top level is still found as a `.tsv`/bulk file).
+2. **Manifest TSV not parsed correctly** — `load_samples()` used `csv.DictReader` with default comma delimiter; `manifest.tsv` is tab-separated. Fixed by inferring delimiter from file extension (`.tsv`/`.tab` → `\t`, otherwise `,`).
+3. **`--samples` path resolution** — when `--samples` is the pseudobulk `manifest.tsv`, pass `--rna-pattern "rna/{group}.tsv"` and `--atac-pattern "atac/{group}.narrowPeak"` so `build-taiji-input` resolves paths relative to `--data-dir`.
+
 ### `coembed-construct` — separate-assay scRNA + scATAC → shared latent space
 
 When the user has two separate Seurat objects (one scRNA, one scATAC) for the same biological system, runs the [Stuart 2019 / Signac integrate_atac vignette](https://stuartlab.org/signac/articles/integrate_atac) end-to-end and emits a single coembed `.rds` that drops directly into `pseudobulk-construct` with `--use-existing-clusters`.
@@ -68,15 +90,21 @@ Outputs: `coembed.rds` (drop-in for pseudobulk-construct), `coembed_summary.json
 
 Hardened against several silent-failure classes — see `skills/coembed-construct/SKILL.md` and references/ for: metadata-value casing mismatches across modalities, Seurat v5 inputs in v4 envs, stale ChromatinAssay fragment paths, macOS R `R_MAX_VSIZE` cap, macOS jetsam OOM under swap pressure, FindTransferAnchors feature-drop audit, Louvain modularity saturation, and the GenomeInfoDb / biovizBase Bioconductor deps that aren't always re-exported under suppressPackageStartupMessages.
 
+**HPC note — `seqlevelsStyle` network call:** `seqlevelsStyle(annotations) <- "UCSC"` triggers a UCSC chromInfo download; on HPC nodes without outbound internet this fails. `coembed.R` wraps this in a `tryCatch` with a manual `chr`-prefix fallback (MT → chrM), so HPC runs proceed without internet. If you see `cannot open URL 'https://hgdownload.soe.ucsc.edu/...'` in output, this fallback is working correctly.
+
+**`--output` path must include `.rds`:** `coembed.py` now auto-appends `.rds` if the supplied path has no extension, so `--output runs/name/coembed` becomes `runs/name/coembed.rds`. Pass the full path with extension to avoid the NOTE message.
+
 ### `pseudobulk-construct` — single-cell → bulk-Taiji bridge
 
 Converts a single-cell object (`.rds` / `.h5ad`) plus a fragments file into pseudobulk RNA GeneQuant TSVs and per-cluster narrowPeak files in the exact layout `build-taiji-input` consumes. Closes the SC → bulk Taiji loop.
 
 Pipeline (orchestrated by `pseudobulk.py`): detect-dataset-type gate → dependency check → `load_and_cluster.R` (Seurat/Signac WNN clustering or RNA-only PCA / ATAC-only LSI; scale-aware resolution binary search targeting mean ~200 cells/cluster, drops <20-cell clusters) → `aggregate_rna.R` (sums raw counts per (cluster × metadata) group → 2-column GeneQuant TSV) → `call_peaks.R` (per-cluster `Signac::CallPeaks`; barcode reconciliation against fragments.tsv.gz with ≥95% overlap required, fail-loud otherwise; emits `<group>.narrowPeak`) → `manifest.tsv` for direct hand-off to build-taiji-input.
 
+**`call_peaks.R` — per-group fragment extraction:** `call_peaks.R` uses a `zcat|awk` pre-filter to write a cell-specific temp BED per group before calling MACS3 directly (bypassing `Signac::CallPeaks`). This produces per-group peaks and is ≈10–100× faster on large fragment files than using `CallPeaks` which passes the full file path to MACS3. `Signac::CallPeaks` ignores the `cells=` argument when writing the MACS3 input — it passes the raw fragment file, so WITHOUT this pre-filter all groups would share the same peak set.
+
 Stratification: `--metadata-cols` cross-products within each cluster (e.g. `genotype,tissue` with values {WT, KO} × {site_a, site_b} → four per-cluster groups). `--cohort-col` picks which metadata column becomes the manifest cohort label.
 
-Output layout under `<output-dir>/`: `clusters.csv`, `resolution_trace.json`, `groups_plan.json`, `rna/<name>.tsv`, `atac/<name>.narrowPeak`, `atac/<name>_peaks.rds`, `qc/umap.png`, `qc/umap_coords.csv`, `manifest.tsv`.
+Output layout under `<output-dir>/`: `clusters.csv`, `resolution_trace.json`, `groups_plan.json`, `rna/<name>.tsv`, `atac/<name>.narrowPeak`, `atac/rds/<name>_peaks.rds`, `qc/umap.png`, `qc/umap_coords.csv`, `manifest.tsv`. Note: GRanges peak objects go in `atac/rds/` (not directly in `atac/`) so that `build-taiji-input`'s `detect-dataset-type` scan sees a clean bulk directory.
 
 ### `workflow-log` — per-run audit trail
 
@@ -141,6 +169,9 @@ Per-run convention (also documented in skills/build-taiji-input/SKILL.md and ski
             │           ▼                             ▼
             │    sc_modality=multiome     sc_modality=separate-assay
             │           │                             │
+            │         sc-qc                  sc-qc (--rna-input / --atac-input)
+            │      (--input obj.rds)         filter each modality separately
+            │           │                             │
             │           │                  coembed-construct ──┐
             │           │                  (Stuart/Signac      │
             │           │                   integrate_atac)    │
@@ -202,7 +233,7 @@ bash bin/doctor.sh --profile base                        # filter by profile
 | Profile | Contents | Enables | Disk | Time |
 |---------|----------|---------|------|------|
 | `base` (default) | Python + click/pydantic/pyyaml + pandas + openpyxl + macs3 + local pkg | detect-dataset-type, build-taiji-input, fetch-references, taiji-runner, workflow-log | ~500 MB | ~5 min |
-| `sc` (additive) | r-base + r-seurat + r-signac + Bioconductor (GenomicRanges + GenomeInfoDb + biovizBase + EnsDb) | pseudobulk-construct, coembed-construct | +3-4 GB | +15-30 min |
+| `sc` (additive) | r-base + r-seurat + r-signac + Bioconductor (GenomicRanges + GenomeInfoDb + biovizBase + EnsDb) | sc-qc, pseudobulk-construct, coembed-construct | +3-4 GB | +15-30 min |
 | `dev` (orthogonal) | pytest + pytest-cov + ruff + mypy + ipython | author tooling | +500 MB | +3 min |
 
 `sc` is **additive** — a user who installed `base` and later needs SC can run `bash bin/install.sh --profile sc` and only the R packages get added. Each skill declares its profile in `skills/<name>/dependencies.yml`; `bin/doctor.sh --profile <name>` filters the verification table.
@@ -255,6 +286,8 @@ Every command the agent invokes runs through `bin/sandbox-run.sh`, a layered wra
 - **The Taiji binary cannot be executed from a sandbox host with a different ISA.** When the host is aarch64 (e.g. an Apple-Silicon-based agent sandbox) and binaries are x86_64 ELF/Mach-O with no qemu-user / box64 / fex-emu emulator installed, the kernel rejects with `Exec format error`. Practical consequence: every "run Taiji" step is either Mac-side or SLURM-side. The agent's role from such a sandbox is strictly **prepare inputs + validate outputs**.
 - **Workspace folder is shared between the sandbox and the host machine.** Files dropped into `<workspace>/data/`, `<workspace>/dependencies_data/`, `<workspace>/runs/<name>/Output/` from either side become immediately visible to the other. Use this for handoffs: host runs Taiji → outputs land in workspace → sandbox can validate / summarize / log without re-running.
 - **R may be available in the sandbox without the SC stack.** Base R `readRDS` lets you inspect Seurat object slots / class / metadata columns / barcode formats WITHOUT installing the full Seurat/Signac/Bioconductor stack — useful for pre-flight diagnosis (catching multi-sample barcode suffixes, pre-existing reductions, unexpected assay layouts) before submitting a long SLURM run. Full coembed/pseudobulk pipelines belong on Mac/SLURM.
+- **Seurat v5 API breaking changes in R scripts.** `GetAssayData(slot=)` is defunct in SeuratObject ≥5.0.0 — use `layer=` (wrap in `tryCatch` to stay v4-compatible). `seqlevelsStyle(x) <- "UCSC"` in GenomeInfoDb triggers a network fetch from UCSC; HPC nodes without internet need a manual fallback (`seqlevels(x) <- ifelse(grepl("^chr", lvls), lvls, ifelse(lvls=="MT","chrM",paste0("chr",lvls)))`). R does NOT support implicit string concatenation — multi-line help text in `make_option()` must be a single string or use `paste0()`.
+- **`bgzip`/`tabix` are not in the taiji-agent conda env.** When pre-filtering fragments files, use `/stg3/data1/eunice/bin/miniconda3/envs/bcftools/bin/bgzip` and `../tabix`. Signac's `CreateFragmentObject` requires the `.tbi` index to exist but does not need bgzip on PATH.
 
 ## Not yet built (scoped but pending)
 
