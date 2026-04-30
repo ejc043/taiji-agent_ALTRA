@@ -70,7 +70,7 @@ Place one file per sample per assay under a single flat directory. File-naming c
 | ATAC-seq | `.narrowPeak` | ENCODE BED6+4 | 10-column standard MACS2/MACS3 output |
 | HiC *(optional)* | `.bedpe` | ChromosomeLoop | 6-column: `chr1 start1 end1 chr2 start2 end2` |
 
-RNA and ATAC are both required per sample; HiC is optional but improves TF→target edge accuracy.
+RNA and ATAC are both required per sample; HiC is optional but improves TF→target edge accuracy. If no HiC is provided, vendored EpiTensor HiC predictions for the respective genome (hg19, hg38, mm10) are used automatically.
 
 `detect-dataset-type` will emit `MISSING REQUIRED` warnings for any absent modality when it classifies a directory as bulk. `build-taiji-input` will error (strict mode, default) or warn-and-skip (--no-strict) if a pattern resolves to a path that doesn't exist.
 
