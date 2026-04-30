@@ -68,7 +68,7 @@ The script:
 
 1. Reads the samples CSV.
 2. For each group, resolves RNA and ATAC file paths under `--data-dir` using the name patterns. Missing files become structured errors in `--strict` mode, warnings otherwise.
-3. Resolves HiC: per-sample override > discovered file > genome default > omitted (if `--no-hic`).
+3. Resolves HiC: per-sample override > discovered file > genome default > **vendored epitensor fallback** > omitted (if `--no-hic`). The epitensor files are in `epitensor/<genome>/` in the repo root and cover hg19, hg38, mm10. A WARN is emitted when the fallback is used so the user knows which file was picked.
 4. Emits the `Active` sheet with the correct `tags`/`format` for each `type`, and IDs using the `RNA-{group}` / `ATAC-{group}` / `HiC_{group}` convention.
 5. Emits the `active_metadata` sheet with FASTA and GTF from the chosen genome.
 6. Prints a summary (N groups, N tracks, missing files, cohort breakdown).

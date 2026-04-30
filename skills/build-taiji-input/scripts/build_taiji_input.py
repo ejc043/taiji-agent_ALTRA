@@ -71,6 +71,22 @@ def _load_detector():
         return None
 
 
+def _find_epitensor(genome_name: str) -> Path | None:
+    """Return the vendored epitensor loops file for genome_name, or None.
+
+    Looks for exactly one file under <repo_root>/epitensor/<genome_name>/.
+    Returns None silently when the genome has no vendored file (e.g. mm39).
+    """
+    epitensor_dir = (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "epitensor" / genome_name
+    )
+    if not epitensor_dir.is_dir():
+        return None
+    files = [f for f in epitensor_dir.iterdir() if f.is_file()]
+    return files[0] if files else None
+
+
 def _attach_log():
     """Soft-attach to the workflow-log skill's active run. Returns None if the
     skill isn't installed alongside or no run is active. Never raises."""
@@ -261,6 +277,16 @@ def assemble_active_rows(
                     hic_path = candidate
             if hic_path is None and genome.hic is not None:
                 hic_path = genome.hic
+            # Epitensor fallback: vendored per-genome enhancer loops shipped with
+            # the repo. Used when no HiC is supplied or configured in genomes.yml.
+            if hic_path is None:
+                epitensor = _find_epitensor(genome.name)
+                if epitensor is not None:
+                    hic_path = epitensor
+                    warnings.append(
+                        f"group '{s.group}': no HiC supplied; "
+                        f"using vendored epitensor fallback ({epitensor.name})"
+                    )
             if hic_path is not None:
                 if not hic_path.exists():
                     warnings.append(
