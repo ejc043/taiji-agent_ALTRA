@@ -11,7 +11,7 @@ Install once on each machine where you'll run the pipeline:
 | **git** | clone the repo | `brew install git` (Mac) / system pkg manager (Linux) |
 | **python ≥ 3.10** | drives the skills + scripts | usually preinstalled; `brew install python@3.11` if not |
 | **a conda solver** | builds the env from the profile-specific YAMLs | `brew install micromamba` (recommended, fastest) — `mamba` or `conda` also work |
-| **Claude Code** *(optional)* | for the agentic flow described at the end | follow Anthropic's install instructions |
+| **Claude Code** | drives the agentic pipeline | follow Anthropic's install instructions |
 
 Linux users get a free OS-level sandbox bonus if `bubblewrap` is installed (`apt install bubblewrap` / `dnf install bubblewrap`); macOS uses `sandbox-exec` (built-in). Neither is required — soft sandboxing works without them.
 
@@ -90,30 +90,6 @@ RNA and ATAC are both required per sample; HiC is optional but improves TF→tar
 `detect-dataset-type` will emit a `MISSING RECOMMENDED` warning when it sees SC object files but no fragments file in the same tree.
 
 ## Running Taiji on a dataset
-
-### Option A — direct script invocation
-
-```bash
-# Scaffold a run from the demo template:
-cp -r runs/RA_OA_chr22_demo runs/<your_run_name>
-rm -rf runs/<your_run_name>/{Input,Output,log,taiji_input.xlsx,taiji_config.yml,taiji_config_files.txt}
-
-# Edit samples.csv with your sample IDs + cohorts:
-$EDITOR runs/<your_run_name>/samples.csv
-# Format:
-#   group,cohort,rep
-#   SAMPLE_01,COHORT_A,1
-#   SAMPLE_02,COHORT_B,1
-
-# If your filename pattern differs from the demo, edit bin/run-taiji.sh's
-# --rna-pattern / --atac-pattern / --hic-pattern (currently set for CHEM280).
-
-bash bin/run-taiji.sh runs/<your_run_name>
-```
-
-Outputs land at `runs/<your_run_name>/Output/Partial/<sample>/GeneRanks.tsv` (TF rankings, one per sample) and `Network/<sample>/edges_combined.csv` (TF→target edges).
-
-### Option B — agentic flow via Claude Code
 
 From your `taiji-agent/` directory after activating the env:
 
