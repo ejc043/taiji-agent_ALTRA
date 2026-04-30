@@ -194,7 +194,6 @@ Composable profiles let users install only what their dataset needs. Bulk-only u
 ```bash
 bash bin/install.sh --system <macos|centos|ubuntu>       # base only (default)
 bash bin/install.sh --system macos --profile sc          # base + sc (additive)
-bash bin/install.sh --system macos --profile full        # base + sc + dev
 bash bin/auto-install.sh --data-dir <path> --system macos        # detect-driven
 micromamba activate taiji-agent
 bash bin/doctor.sh --profile base                        # filter by profile
@@ -205,7 +204,6 @@ bash bin/doctor.sh --profile base                        # filter by profile
 | `base` (default) | Python + click/pydantic/pyyaml + pandas + openpyxl + macs3 + local pkg | detect-dataset-type, build-taiji-input, fetch-references, taiji-runner, workflow-log | ~500 MB | ~5 min |
 | `sc` (additive) | r-base + r-seurat + r-signac + Bioconductor (GenomicRanges + GenomeInfoDb + biovizBase + EnsDb) + r-remotes + (postinstall) MuDataSeurat | pseudobulk-construct, coembed-construct | +3-4 GB | +15-30 min |
 | `dev` (orthogonal) | pytest + pytest-cov + ruff + mypy + ipython | author tooling | +500 MB | +3 min |
-| `full` | base + sc + dev | everything | ~5 GB | ~25 min |
 
 `sc` is **additive** — a user who installed `base` and later needs SC can run `bash bin/install.sh --profile sc` and only the R packages get added. Each skill declares its profile in `skills/<name>/dependencies.yml`; `bin/doctor.sh --profile <name>` filters the verification table.
 

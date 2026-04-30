@@ -54,7 +54,7 @@ What this does, in order:
 ### 3. Verify the install
 
 ```bash
-bash bin/doctor.sh --profile base       # or --profile sc / full
+bash bin/doctor.sh --profile base       # or --profile sc
 ```
 
 Should report PASS for every skill in the requested profile.
@@ -200,7 +200,7 @@ taiji-agent/
 ├── CLAUDE.md                       loaded by Claude on every session — full skills catalog + conventions
 ├── bin/                            install + run scripts
 │   ├── auto-install.sh             agent-driven: data → profile → install
-│   ├── install.sh                  profile-aware: --profile {base|sc|dev|full}
+│   ├── install.sh                  profile-aware: --profile {base|sc|dev}
 │   ├── install-taiji.sh            per-system Taiji binary downloader / detector
 │   ├── postinstall.R               GitHub-only R packages (MuDataSeurat)
 │   ├── run-taiji.sh                per-run executor (delegates per-sample to taiji-runner)

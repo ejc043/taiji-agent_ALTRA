@@ -18,13 +18,11 @@
 #   dev    pytest + pytest-cov + ruff + mypy + ipython
 #          Enables: development on the skills themselves
 #          +500 MB, +3 min
-#   full   = base + sc + dev (everything)
 #
 # Usage:
 #   bash bin/install.sh                                    # base only (default)
 #   bash bin/install.sh --system macos                     # base + macOS taiji binary
 #   bash bin/install.sh --profile sc                       # base + sc
-#   bash bin/install.sh --profile full                     # base + sc + dev
 #   bash bin/install.sh --profile dev                      # base + dev
 #   bash bin/install.sh --env-name my-env                  # non-default env name
 #   bash bin/install.sh --env-prefix /abs/path/envs/foo    # explicit env path
@@ -93,8 +91,7 @@ case "$PROFILE" in
   base)  PROFILES=(base) ;;
   sc)    PROFILES=(base sc) ;;
   dev)   PROFILES=(base dev) ;;
-  full)  PROFILES=(base sc dev) ;;
-  *) echo "unknown profile '$PROFILE' (expected: base|sc|dev|full)" >&2; exit 2 ;;
+  *) echo "unknown profile '$PROFILE' (expected: base|sc|dev)" >&2; exit 2 ;;
 esac
 echo "[install] profile=$PROFILE  (= ${PROFILES[*]})"
 
