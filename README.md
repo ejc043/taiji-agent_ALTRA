@@ -37,7 +37,7 @@ cd taiji-agent
 bash bin/auto-install.sh --data-dir data/ --system macos --fetch-references --genome hg38
 # Linux: --system centos  or  --system ubuntu
 # Replace hg38 with hg19, mm10, or mm39 as needed.
-# Omit --fetch-references if you want to stage references later (step 3 below).
+# Omit --fetch-references to skip reference staging (re-run install.sh with the flag later).
 ```
 
 What this does, in order:
@@ -51,44 +51,7 @@ What this does, in order:
 4. Runs `bin/postinstall.R` if SC profile is in scope (installs MuDataSeurat from GitHub for `.h5mu` input). `.h5ad` input is no longer auto-supported — see the SC notes in `skills/pseudobulk-construct/dependencies.yml` if you need it.
 5. Detects pre-existing Taiji binaries in `binaries/` by name; if a matching one is present, just creates a symlink. Otherwise downloads the Linux binary from the Taiji GitHub release for `--system centos|ubuntu`. macOS prints manual-download instructions because the asset filename varies by macOS version.
 
-### 3. Stage reference data (one-time per machine per genome)
-
-If you passed `--fetch-references --genome <build>` in step 2, this is already done — skip ahead to step 4.
-
-Otherwise, activate the env and run fetch manually:
-
-```bash
-micromamba activate taiji-agent
-python skills/fetch-references/scripts/fetch.py \
-  --genome hg38 --output dependencies_data/ --update-genomes-yml
-```
-
-`bin/install.sh` registers the env's parent directory in your solver's `envs_dirs` config at install time, so `<solver> activate taiji-agent` works in any future shell — even on managed clusters where the env lives under a non-default prefix (e.g. `/stg3/data1/eunice/.local/share/mamba/envs/taiji-agent`). If the by-name form ever fails (e.g. you installed the env before this auto-registration was added, or the config write was blocked), look up the prefix with `micromamba env list` and activate by full path.
-
-Downloads to `dependencies_data/<genome>/`:
-- `genome.fa` (GENCODE primary assembly)
-- `genes.gtf` (GENCODE annotation)
-- `<species>.meme` (CIS-BP TF binding motifs — copied from the in-repo `cisbp_database/`; no external download)
-- `motifs.meme` symlink → the staged motif file (Taiji templates reference this stable path)
-
-#### Supported genome versions
-
-`--genome` accepts one of the four builds below. Versions are pinned in `skills/fetch-references/scripts/reference_manifest.yml`; bump them deliberately rather than chasing the rolling latest.
-
-| Tag    | Species | Assembly | GENCODE annotation | Motif file (CIS-BP, vendored) |
-|--------|---------|----------|--------------------|-------------------------------|
-| `hg38` | Human   | GRCh38 (primary assembly) | v45 (Mar 2024) | `cisbp_human_2.meme` (4443 PWMs, full CIS-BP) |
-| `hg19` | Human   | GRCh37.p13                | v19 (Feb 2014, frozen — last GENCODE release on GRCh37) | `cisbp_human_2.meme` |
-| `mm10` | Mouse   | GRCm38 (primary assembly) | M25 (Apr 2020, last GENCODE release on GRCm38) | `cisBP_mouse.meme` |
-| `mm39` | Mouse   | GRCm39 (primary assembly) | M34 (Mar 2024) | `cisBP_mouse.meme` |
-
-List the same set at runtime with `python skills/fetch-references/scripts/fetch.py --list`. Add a new genome by editing `reference_manifest.yml` (schema is documented at the top of that file) — no code change required.
-
-The motif source is **CIS-BP** (vendored at `cisbp_database/`, TF gene symbols as primary IDs, no network). Human runs use `cisbp_human_2.meme` — verified to match the reference Nextflow run on the RA/OA hg38 chr22 dataset (Spearman 0.97, RMSE ~4e-5). HOCOMOCO is not supported — switching motif sources changes both TF coverage and PageRank values, so locking to one source keeps cross-run results comparable.
-
-Idempotent — files within ±5% of expected size are skipped. Pass `--check` to verify without downloading. Pass `--force` to re-fetch.
-
-### 4. Verify the install
+### 3. Verify the install
 
 ```bash
 bash bin/doctor.sh --profile base       # or --profile sc / full
