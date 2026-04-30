@@ -13,7 +13,6 @@ Install once on each machine where you'll run the pipeline:
 | **a conda solver** | builds the env from the profile-specific YAMLs | `brew install micromamba` (recommended, fastest) — `mamba` or `conda` also work |
 | **Claude Code** | drives the agentic pipeline | follow Anthropic's install instructions |
 
-Linux users get a free OS-level sandbox bonus if `bubblewrap` is installed (`apt install bubblewrap` / `dnf install bubblewrap`); macOS uses `sandbox-exec` (built-in). Neither is required — soft sandboxing works without them.
 
 ## Quick start
 
@@ -104,28 +103,16 @@ Then prompt Claude with something like:
 **Bulk RNA + ATAC (+ optionally HiC):**
 
 ```
-Run Taiji on the dataset in `data/<your_dataset>/`. The samples are
-<sample_id_1>, <sample_id_2>, ... — bulk RNA-seq + ATAC-seq + (optionally)
-HiC, hg38. Walk through prep, classification, input construction, and the
-per-sample binary execution. Validate outputs at the end. Log everything to
+Run Taiji on the dataset in `data/<your_dataset>/`, hg38. 
+Log everything to
 the workflow log so I can audit later.
 ```
 
 **Single-cell, multiome (.h5mu / cellranger-arc — same cells in both modalities):**
 
 ```
-Run Taiji on the multiome dataset at `data/<your_dataset>/<object>.h5mu`,
-fragments at `data/<your_dataset>/atac_fragments.tsv.gz`, hg38. Stratify
+Run Taiji on the multiome dataset at `data/<your_dataset>/`, hg38. Stratify
 pseudobulks by <metadata cols, e.g. condition,donor>.
-
-Walk through:
-  1. detect-dataset-type → confirm multiome
-  2. pseudobulk-construct: WNN clustering, render qc/umap.png (panels
-     colored by seurat_clusters and each metadata col), pause for me
-     to inspect before proceeding
-  3. RNA aggregation + Signac::CallPeaks per pseudobulk group
-  4. build-taiji-input → taiji-runner → validate GeneRanks.tsv
-
 Log everything to the workflow log.
 ```
 
@@ -206,17 +193,6 @@ taiji-agent/
         ├── Output/Partial/<sample>_output/   GeneRanks.tsv, Network/, etc.
         └── log/                    audit trail (md + jsonl per run)
 ```
-
-## Sandboxing
-
-Every command the agent invokes runs through `bin/sandbox-run.sh`, which:
-
-- Refuses to run from outside the workspace (`cwd` must be inside `REPO_ROOT`)
-- Pins `TMPDIR` to `<REPO_ROOT>/tmp/sandbox-<pid>` so even Taiji's scratch I/O stays in-tree
-- Auto-engages `bwrap` (Linux) or `sandbox-exec` (macOS) if available — kernel-enforced filesystem isolation
-- Falls back to soft enforcement when no OS-level tool is present
-
-Add `--strict-sandbox` to `bin/run-taiji.sh` (or set `TAIJI_STRICT_SANDBOX=1`) to refuse runs unless an OS-level sandbox is available. Use `--no-sandbox` only for debugging.
 
 ## Common workflows
 
