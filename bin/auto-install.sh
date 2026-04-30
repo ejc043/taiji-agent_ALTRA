@@ -15,11 +15,15 @@
 # Usage:
 #   bash bin/auto-install.sh --data-dir <path> [--system macos|centos|ubuntu]
 #                            [--solver micromamba|mamba|conda]
+#                            [--fetch-references --genome hg38|hg19|mm10|mm39]
+#                                                       # stage reference data in the same step
 #                            [--dry-run]                # print decision, don't install
 #                            [...any other install.sh flag is forwarded]
 #
 # Examples:
 #   bash bin/auto-install.sh --data-dir data/RA_OA_chr22_demo --system macos
+#   bash bin/auto-install.sh --data-dir data/RA_OA_chr22_demo --system macos \
+#                            --fetch-references --genome hg38
 #   bash bin/auto-install.sh --data-dir data/some_pbmc_multiome --system centos --dry-run
 
 set -euo pipefail

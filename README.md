@@ -34,8 +34,10 @@ cd taiji-agent
 
 ```bash
 # Drop your dataset under data/<your_dataset>/ first, then:
-bash bin/auto-install.sh --data-dir data/ --system macos
+bash bin/auto-install.sh --data-dir data/ --system macos --fetch-references --genome hg38
 # Linux: --system centos  or  --system ubuntu
+# Replace hg38 with hg19, mm10, or mm39 as needed.
+# Omit --fetch-references if you want to stage references later (step 3 below).
 ```
 
 What this does, in order:
@@ -50,6 +52,10 @@ What this does, in order:
 5. Detects pre-existing Taiji binaries in `binaries/` by name; if a matching one is present, just creates a symlink. Otherwise downloads the Linux binary from the Taiji GitHub release for `--system centos|ubuntu`. macOS prints manual-download instructions because the asset filename varies by macOS version.
 
 ### 3. Stage reference data (one-time per machine per genome)
+
+If you passed `--fetch-references --genome <build>` in step 2, this is already done — skip ahead to step 4.
+
+Otherwise, activate the env and run fetch manually:
 
 ```bash
 micromamba activate taiji-agent

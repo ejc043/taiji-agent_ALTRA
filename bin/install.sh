@@ -36,6 +36,9 @@
 #   bash bin/install.sh --use-lockfile                     # install from conda-lock
 #   bash bin/install.sh --solver mamba|micromamba|conda    # default: auto-detect
 #                                                          # (prefers micromamba > mamba > conda)
+#   bash bin/install.sh --system macos --fetch-references --genome hg38
+#                                                          # install + stage reference data
+#                                                          # in one step (no separate activate)
 #
 # Exit codes:
 #   0 ok
@@ -43,6 +46,7 @@
 #   3 conda env create/update failed
 #   4 postinstall.R failed
 #   5 install-taiji.sh failed
+#   6 fetch-references failed
 
 set -euo pipefail
 
@@ -60,6 +64,9 @@ SKIP_TAIJI=0
 SKIP_R=""    # tri-state: "" auto-decide, 1 force-skip, 0 force-run
 USE_LOCKFILE=0
 SOLVER=""    # empty means "auto-detect: prefer micromamba, then mamba, then conda"
+FETCH_REFS=0
+FETCH_GENOME=""
+FETCH_OUTPUT=""    # empty = default (dependencies_data/ inside repo root)
 
 usage() { sed -n '2,40p' "$0"; exit "${1:-0}"; }
 
@@ -69,11 +76,14 @@ while [[ $# -gt 0 ]]; do
     --profile)       PROFILE="$2"; shift 2 ;;
     --env-name)      ENV_NAME="$2"; shift 2 ;;
     --env-prefix)    ENV_PREFIX="$2"; shift 2 ;;
-    --skip-taiji)    SKIP_TAIJI=1; shift ;;
-    --skip-r)        SKIP_R=1; shift ;;
-    --use-lockfile)  USE_LOCKFILE=1; shift ;;
-    --solver)        SOLVER="$2"; shift 2 ;;
-    -h|--help)       usage 0 ;;
+    --skip-taiji)         SKIP_TAIJI=1; shift ;;
+    --skip-r)             SKIP_R=1; shift ;;
+    --use-lockfile)       USE_LOCKFILE=1; shift ;;
+    --solver)             SOLVER="$2"; shift 2 ;;
+    --fetch-references)   FETCH_REFS=1; shift ;;
+    --genome)             FETCH_GENOME="$2"; shift 2 ;;
+    --fetch-output)       FETCH_OUTPUT="$2"; shift 2 ;;
+    -h|--help)            usage 0 ;;
     *) echo "unknown arg: $1" >&2; usage 2 ;;
   esac
 done
@@ -408,6 +418,28 @@ else
   echo "[install] --skip-taiji set; not downloading the Taiji binary."
 fi
 
+# ---- Stage reference data (only when --fetch-references is set) ----
+if [[ "$FETCH_REFS" -eq 1 ]]; then
+  if [[ -z "$FETCH_GENOME" ]]; then
+    echo "[install] --fetch-references requires --genome <build>" >&2
+    echo "[install]   supported builds: hg38, hg19, mm10, mm39" >&2
+    echo "[install]   e.g. bash bin/install.sh --fetch-references --genome hg38" >&2
+    exit 2
+  fi
+  FETCH_OUT="${FETCH_OUTPUT:-${REPO_ROOT}/dependencies_data}"
+  FETCH_PY="${REPO_ROOT}/skills/fetch-references/scripts/fetch.py"
+  echo "[install] staging reference data for $FETCH_GENOME into $FETCH_OUT ..."
+  if ! "${RUN[@]}" python "$FETCH_PY" \
+      --genome "$FETCH_GENOME" \
+      --output "$FETCH_OUT" \
+      --update-genomes-yml; then
+    echo "[install] fetch-references failed" >&2
+    exit 6
+  fi
+else
+  echo "[install] skipping reference data (pass --fetch-references --genome <build> to stage in one step)."
+fi
+
 # ---- Register env's parent dir in solver's envs_dirs ----
 # So `<solver> activate <name>` works in any future shell, regardless of
 # whatever MAMBA_ROOT_PREFIX is set to. By default, micromamba/mamba/conda
@@ -454,6 +486,11 @@ register_envs_dir "${ENV_PATH:-}"
 TAIJI_PATH="(skipped)"
 [[ "$SKIP_TAIJI" -eq 0 ]] && TAIJI_PATH="${REPO_ROOT}/binaries/taiji"
 
+REF_DATA_LINE="(not staged — rerun with --fetch-references --genome <build> to stage)"
+if [[ "$FETCH_REFS" -eq 1 ]]; then
+  REF_DATA_LINE="${FETCH_OUTPUT:-${REPO_ROOT}/dependencies_data}/$FETCH_GENOME/"
+fi
+
 cat <<EOF
 
 [install] SUCCESS
@@ -461,6 +498,7 @@ cat <<EOF
   env path:       ${ENV_PATH:-(unknown)}
   profile:        $PROFILE  (=${PROFILES[*]})
   Taiji binary:   $TAIJI_PATH
+  reference data: $REF_DATA_LINE
 
 Activate with (in this order of preference):
   $SOLVER activate $ENV_NAME            # by-name (works in any shell after the envs_dirs registration above)
