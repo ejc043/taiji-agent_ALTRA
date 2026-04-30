@@ -43,7 +43,7 @@ What this does, in order:
 
 1. Classifies `data/` as bulk / single-cell 
 2. Picks the profile:
-   - **bulk** → `base` (~500 MB, ~5 min) — Python + xlsx + MACS3 only
+   - **bulk** → `base` (~500 MB, ~5 min) — Python + parent input + MACS3 only
    - **single-cell** → `sc` (~5 GB, ~25 min) — adds R + Seurat/Signac on top of base
 3. Creates the `taiji-agent` conda env from the matching `environment.<profile>.yml`. **Skips this step if the env already has that profile installed** (idempotent — re-running on a fresh clone vs an existing env is fast).
 4. Runs `bin/postinstall.R` if SC profile is in scope (installs MuDataSeurat from GitHub for `.h5mu` input). `.h5ad` input is no longer auto-supported — see the SC notes in `skills/pseudobulk-construct/dependencies.yml` if you need it.
@@ -129,7 +129,7 @@ Claude reads `CLAUDE.md` (auto-loaded from cwd), sees the seven skills + the ver
 2. `fetch-references` (if not already staged) → reference data
 3. `coembed-construct` (only for separate-assay SC) → coembed.rds with shared PCA/UMAP and de novo clusters
 4. `pseudobulk-construct` (only if SC) → per-cluster pseudobulks + `qc/umap.png`
-5. `build-taiji-input` → xlsx
+5. `build-taiji-input` → parent input
 6. `taiji-runner` → per-sample TSV/config + per-sample Taiji invocation
 7. Output validation: confirms every sample produced `GeneRanks.tsv`, summarizes top TFs
 
@@ -148,16 +148,16 @@ taiji-agent/
 │   ├── postinstall.R               GitHub-only R packages (MuDataSeurat)
 │   ├── run-taiji.sh                per-run executor (delegates per-sample to taiji-runner)
 │   ├── sandbox-run.sh              workspace-bounded execution wrapper
-│   ├── preflight-xlsx.py           verifies all paths in xlsx exist before launch
+│   ├── preflight-xlsx.py           verifies all paths in parent input exist before launch
 │   └── doctor.sh                   --profile filter; verifies every dep across skills
 ├── skills/                         six production skills (see CLAUDE.md for catalog)
 │   ├── detect-dataset-type/        classifies bulk/SC; SC sub-modality
 │   ├── fetch-references/           idempotent GENCODE downloader + CIS-BP staging
-│   ├── build-taiji-input/          produces Taiji input xlsx
+│   ├── build-taiji-input/          produces Taiji input parent input
 │   ├── pseudobulk-construct/       SC → bulk-Taiji bridge (Seurat WNN + per-cluster MACS3)
 │   ├── taiji-runner/               per-sample Taiji 1.3.0 orchestrator
 │   └── workflow-log/               per-run audit log auto-attached by every skill
-├── environment.base.yml            ~500 MB Python + xlsx + MACS3
+├── environment.base.yml            ~500 MB Python + parent input + MACS3
 ├── environment.sc.yml              +3-4 GB R + Seurat + Signac (additive)
 ├── environment.dev.yml             +500 MB pytest + ruff + mypy
 ├── docs/
@@ -200,7 +200,7 @@ All install steps are designed to be safely re-runnable:
 - `bin/install.sh` tracks installed profiles in `<env>/.taiji-agent-profiles` with hash of the env-file. Re-runs on an unchanged env are <1 s no-ops.
 - `bin/install-taiji.sh` detects pre-existing binaries by name and just (re)creates the symlink — no re-download.
 - `fetch-references --check` reports what's present without touching the network. Real fetches skip files already at the expected path with the right size.
-- `bin/run-taiji.sh` regenerates the xlsx + per-sample configs on every invocation; outputs from previous successful samples are preserved.
+- `bin/run-taiji.sh` regenerates the parent input + per-sample configs on every invocation; outputs from previous successful samples are preserved.
 
 ## Documentation
 
