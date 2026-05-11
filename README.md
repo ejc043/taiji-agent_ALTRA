@@ -223,4 +223,4 @@ MIT. See `LICENSE`.
 
 ## Author
 
-Eunice Chen (UCSD bioinformatician, ejc043@ucsd.edu).
+Eunice Choi (UCSD bioinformatician, ejc043@ucsd.edu).

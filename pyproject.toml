@@ -9,7 +9,7 @@ description = "Preflight validation, SLURM submission, and monitoring for Taiji 
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "MIT" }
-authors = [{ name = "Eunice Chen", email = "ejc043@ucsd.edu" }]
+authors = [{ name = "Eunice Choi", email = "ejc043@ucsd.edu" }]
 keywords = ["taiji", "rna-seq", "atac-seq", "hpc", "slurm", "bioinformatics"]
 classifiers = [
     "Programming Language :: Python :: 3",
