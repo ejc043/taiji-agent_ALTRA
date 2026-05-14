@@ -24,14 +24,31 @@ suppressPackageStartupMessages({
 })
 
 # Source sibling MultiK helper (same directory as this script).
+# Wrapped in tryCatch: the file is only required when --optimal-k-method multik
+# is in effect (WNN signal, no --use-existing-clusters). All other code paths
+# (heuristic, --use-existing-clusters, RNA-only, ATAC-only) never call
+# multik_optimal_k() so a missing file is harmless there.
 local({
-  args      <- commandArgs(trailingOnly = FALSE)
-  file_flag <- grep("^--file=", args, value = TRUE)
+  args       <- commandArgs(trailingOnly = FALSE)
+  file_flag  <- grep("^--file=", args, value = TRUE)
   script_dir <- if (length(file_flag))
     dirname(normalizePath(sub("^--file=", "", file_flag[1])))
   else
     getwd()
-  source(file.path(script_dir, "multik_optimal_k.R"), local = FALSE)
+  tryCatch(
+    source(file.path(script_dir, "multik_optimal_k.R"), local = FALSE),
+    error = function(e) {
+      message("[load_and_cluster] NOTE: multik_optimal_k.R not found — MultiK",
+              " unavailable. Pass --optimal-k-method heuristic or",
+              " --use-existing-clusters to proceed without it.")
+      # Define a stub so the script body can reference multik_optimal_k
+      # without erroring; the stub will hard-stop if actually called.
+      assign("multik_optimal_k", function(...) {
+        stop("multik_optimal_k.R is missing; cannot run MultiK. ",
+             "Use --optimal-k-method heuristic or --use-existing-clusters.")
+      }, envir = .GlobalEnv)
+    }
+  )
 })
 
 # ------------------------------------------------------------------------

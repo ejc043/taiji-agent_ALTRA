@@ -1,5 +1,7 @@
 # Taiji agent — repository guide for Claude
 
+> **Operational QC and skill invocation guidance lives in `skills/CLAUDE.md`.** Read it before running any single-cell skill. It covers mandatory sc-qc checks, chooseR interpretation, and common failure modes found in live runs.
+
 ## What this repo is
 
 A Python package + plugin-style skills bundle that wraps the [Taiji pipeline](https://github.com/Taiji-pipeline/Taiji) (Wei Wang lab, UCSD) for routine use on a SLURM HPC and on a Mac. The agent does not re-implement Taiji — it handles preflight validation, input construction, single-cell preprocessing, and submission so the user can hand it a directory of data and get a Taiji-ready run with minimal manual setup.
@@ -16,7 +18,7 @@ skills/                 Plugin-style skills (the bulk of the project's logic liv
   detect-dataset-type/      classifies a directory as bulk/SC/mixed/unknown + SC sub-modality
   fetch-references/         idempotent stager for FASTA + GTF + MEME (per genome)
   pseudobulk-construct/     bridges single-cell objects to bulk-Taiji inputs
-  sc-qc/                    cell-level QC filtering (nFeature/nCount/percent.mt/TSS/nucleosome/blacklist)
+  sc-qc/                    cell-level QC filtering (nFeature/percent.mt for RNA; TSS/nucleosome/blacklist for ATAC)
   taiji-runner/             per-sample Taiji 1.3.0 orchestrator (xlsx → per-sample TSVs/configs → taiji run per sample)
   workflow-log/             per-run audit log (md + jsonl) auto-attached by sibling skills
   taiji/                    EMPTY placeholder for future umbrella skill
@@ -49,7 +51,7 @@ Applies per-cell quality filters to a Seurat object (RNA-only, ATAC-only, multio
 
 Auto-detects modality from the object: `rna` (RNA assay only), `atac` (ATAC/peaks assay only), `multiome` (both assays, same cells — keeps intersection passing both filter sets), `coembed` (both assays, `meta.data$assay ∈ {RNA, ATAC}` — splits by origin, filters each separately, recombines).
 
-**RNA filters:** `nFeature_RNA` min/max, `nCount_RNA` min, `percent.mt` max. `percent.mt` is auto-computed if absent.
+**RNA filters:** `nFeature_RNA` strict min/max (> 200 & < 5000), `percent.mt` strict max (< 10%). `percent.mt` is auto-computed if absent. `nCount_RNA` is intentionally not filtered — matches the lab reference pipeline (`coembed_preprocess.R`). See `skills/CLAUDE.md` for the canonical threshold table.
 
 **ATAC filters:** `nCount_<assay>` min, `nFeature_<assay>` min, `TSS.enrichment` min, `nucleosome_signal` max, `blacklist_ratio` max. Metrics absent from `meta.data` are **skipped with a warning** — they must be pre-computed upstream (Signac's `TSSEnrichment()`, `NucleosomeSignal()`, `FractionCountsInRegion()`).
 

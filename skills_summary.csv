@@ -1,0 +1,10 @@
+Skill,Purpose
+sc-qc,Filter cells by QC metrics (nFeature, percent.mt, TSS, etc.)
+detect-dataset-type,Classify directory as bulk/SC/mixed; sub-classify SC modality
+build-taiji-input,Build xlsx input for bulk Taiji from RNA TSVs + ATAC peaks
+coembed-construct,Co-embed separate scRNA + scATAC objects into shared latent space
+pseudobulk-construct,Aggregate SC data into pseudobulk RNA TSVs + ATAC peaks for Taiji
+fetch-references,Stage FASTA/GTF/MEME reference files per genome (idempotent)
+taiji-runner,Split xlsx → per-sample configs, run Taiji, validate outputs
+workflow-log,Audit trail (md + jsonl) auto-attached across pipeline stages
+consensus-edges,Collapse per-sample Taiji networks to group-level consensus

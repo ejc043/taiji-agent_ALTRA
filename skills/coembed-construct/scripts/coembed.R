@@ -630,15 +630,35 @@ if (opt$`reuse-atac-reductions` && atac_has_lsi && atac_has_umap) {
 atac$assay <- "ATAC"
 
 # ------------------------------------------------------------------------
-# Stage 3 — GeneActivity -> ACTIVITY assay
+# Stage 3 — Gene activity assay for anchor transfer
 # ------------------------------------------------------------------------
+# If the ATAC prep object already has an "RNA" assay (pre-built gene
+# activity, common in _prep objects from this lab's pipeline), reuse it
+# directly — this matches coembed_preprocess.R which used query.assay="RNA".
+# Computing fresh GeneActivity restricted to 2000 variable features drops
+# ~18% of features before anchoring even starts (1634/2000 shared in D7).
+# Using the full pre-built assay (21808 genes) gives FindTransferAnchors
+# access to the complete variable feature set.
+#
+# When no pre-built RNA assay exists, compute GeneActivity as a fallback
+# (stored as "ACTIVITY").
 
-message("[coembed] computing per-cell gene activities (ATAC -> ACTIVITY assay)")
-gene_activities <- GeneActivity(atac, features = VariableFeatures(rna))
-atac[["ACTIVITY"]] <- CreateAssayObject(counts = gene_activities)
-DefaultAssay(atac) <- "ACTIVITY"
-atac <- NormalizeData(atac, verbose = FALSE)
-atac <- ScaleData(atac, features = rownames(atac), verbose = FALSE)
+atac_gene_activity_assay <- if ("RNA" %in% Assays(atac)) {
+  message("[coembed] ATAC object has pre-built 'RNA' assay (gene activity). ",
+          "Reusing it for anchor transfer (matches lab reference coembed_preprocess.R).")
+  DefaultAssay(atac) <- "RNA"
+  atac <- NormalizeData(atac, verbose = FALSE)
+  atac <- ScaleData(atac, features = rownames(atac[["RNA"]]), verbose = FALSE)
+  "RNA"
+} else {
+  message("[coembed] computing per-cell gene activities (ATAC -> ACTIVITY assay)")
+  gene_activities <- GeneActivity(atac, features = VariableFeatures(rna))
+  atac[["ACTIVITY"]] <- CreateAssayObject(counts = gene_activities)
+  DefaultAssay(atac) <- "ACTIVITY"
+  atac <- NormalizeData(atac, verbose = FALSE)
+  atac <- ScaleData(atac, features = rownames(atac), verbose = FALSE)
+  "ACTIVITY"
+}
 
 # ------------------------------------------------------------------------
 # Stage 4 — FindTransferAnchors (RNA ref, ATAC query, CCA)
@@ -653,28 +673,28 @@ atac <- ScaleData(atac, features = rownames(atac), verbose = FALSE)
 # object, or Ensembl IDs vs gene symbols).
 features_requested <- VariableFeatures(rna)
 features_in_atac   <- intersect(features_requested,
-                                 rownames(GetAssayData(atac, assay = "ACTIVITY",
-                                                       layer = "counts")))
+                                 rownames(GetAssayData(atac, assay = atac_gene_activity_assay,
+                                                       layer = "data")))
 n_features_used   <- length(features_in_atac)
 n_features_dropped <- length(features_requested) - n_features_used
 message(sprintf(
-  "[coembed]   features for anchoring: %d requested -> %d shared (%.0f%% kept, %d dropped from ACTIVITY assay)",
+  "[coembed]   features for anchoring: %d requested -> %d shared (%.0f%% kept, %d dropped from %s assay)",
   length(features_requested), n_features_used,
   100 * n_features_used / max(1, length(features_requested)),
-  n_features_dropped))
+  n_features_dropped, atac_gene_activity_assay))
 if (n_features_used < 0.5 * length(features_requested)) {
   message(sprintf(
-    "[coembed]   WARN: only %d of %d RNA variable features are present in the ACTIVITY assay. Common cause: --genome / EnsDb mismatch with the RNA gene-name convention (e.g. mm10 EnsDb on human data, or Ensembl IDs vs symbols). The Stuart vignette assumes both inputs use gene symbols matching the EnsDb's gene_name slot.",
+    "[coembed]   WARN: only %d of %d RNA variable features are present in the gene activity assay. Common cause: --genome / EnsDb mismatch with the RNA gene-name convention (e.g. mm10 EnsDb on human data, or Ensembl IDs vs symbols). The Stuart vignette assumes both inputs use gene symbols matching the EnsDb's gene_name slot.",
     n_features_used, length(features_requested)))
 }
 
-message("[coembed] FindTransferAnchors: RNA (ref) -> ATAC (query, ACTIVITY assay), CCA")
+message("[coembed] FindTransferAnchors: RNA (ref) -> ATAC (query, ", atac_gene_activity_assay, " assay), CCA")
 transfer_anchors <- FindTransferAnchors(
   reference       = rna,
   query           = atac,
   features        = VariableFeatures(rna),
   reference.assay = "RNA",
-  query.assay     = "ACTIVITY",
+  query.assay     = atac_gene_activity_assay,
   reduction       = "cca",
   verbose         = FALSE
 )
@@ -705,6 +725,11 @@ message("[coembed] merging RNA + ATAC objects")
 DefaultAssay(rna)  <- "RNA"
 DefaultAssay(atac) <- "RNA"
 coembed <- merge(x = rna, y = atac)
+# JoinLayers required in Seurat v5: merge() splits RNA into counts.1/data.1 etc;
+# ScaleData/RunPCA need a single contiguous layer.
+if (packageVersion("SeuratObject") >= "5.0.0") {
+  coembed <- JoinLayers(coembed)
+}
 message("[coembed]   merged: ", ncol(coembed), " cells (",
         sum(coembed$assay == "RNA"), " RNA + ",
         sum(coembed$assay == "ATAC"), " ATAC)")
@@ -717,7 +742,40 @@ message("[coembed] joint ScaleData / RunPCA / RunUMAP on shared space")
 DefaultAssay(coembed) <- "RNA"
 coembed <- ScaleData(coembed, features = genes_use, do.scale = FALSE, verbose = FALSE)
 coembed <- RunPCA(coembed, features = genes_use, verbose = FALSE)
-coembed <- RunUMAP(coembed, dims = 1:opt$`n-pcs`, verbose = FALSE)
+# Use umap-learn (Python) with correlation metric to match lab reference (coembed_preprocess.R).
+# R/reticulate virtualenv may point to a stale Python path; override with
+# RETICULATE_PYTHON so it finds the correct conda env Python that has umap-learn.
+# Falls back to uwot if umap-learn is unavailable after path correction.
+local({
+  override <- Sys.getenv("RETICULATE_PYTHON", unset = "")
+  if (nzchar(override)) {
+    message("[coembed] RETICULATE_PYTHON already set: ", override)
+  } else {
+    # Prefer the taiji-agent conda env Python (umap-learn installed there).
+    candidates <- c(
+      "/stg3/data1/eunice/.local/share/mamba/envs/taiji-agent/bin/python",
+      file.path(Sys.getenv("CONDA_PREFIX", ""), "bin/python")
+    )
+    for (p in candidates) {
+      if (nzchar(p) && file.exists(p)) {
+        Sys.setenv(RETICULATE_PYTHON = p)
+        message("[coembed] set RETICULATE_PYTHON=", p)
+        break
+      }
+    }
+  }
+})
+umap_method <- tryCatch({
+  reticulate::import("umap")
+  "umap-learn"
+}, error = function(e) {
+  message("[coembed] umap-learn not available (", conditionMessage(e), "); falling back to uwot")
+  "uwot"
+})
+message("[coembed] UMAP method: ", umap_method)
+coembed <- RunUMAP(coembed, dims = 1:opt$`n-pcs`,
+                   umap.method = umap_method, metric = "correlation",
+                   verbose = FALSE)
 
 # ------------------------------------------------------------------------
 # Stage 8 — Cluster on the shared space
