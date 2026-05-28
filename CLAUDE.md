@@ -21,7 +21,9 @@ skills/                 Plugin-style skills (the bulk of the project's logic liv
   sc-qc/                    cell-level QC filtering (nFeature/percent.mt for RNA; TSS/nucleosome/blacklist for ATAC)
   taiji-runner/             per-sample Taiji 1.3.0 orchestrator (xlsx → per-sample TSVs/configs → taiji run per sample)
   workflow-log/             per-run audit log (md + jsonl) auto-attached by sibling skills
-  taiji/                    EMPTY placeholder for future umbrella skill
+  archr-preprocess/         ArchR-based scATAC preprocessing + Seurat reference transfer (ALTRA protocol)
+  pseudobulk-altra/         pseudobulk construction faithful to prepare_taiji_input.r (raw fragment BEDs, no peak calling)
+  taiji-run-altra/          Taiji xlsx + SLURM array setup for ALTRA pseudobulk runs (RNA + ATAC PairedEnd + HiC)
   *-workspace/              fixtures + eval scaffolding for the like-named skill
   <skill>/dependencies.yml  per-skill runtime dep declaration (read by bin/doctor.sh)
 bin/                    one-command install + verifier
@@ -290,6 +292,53 @@ Every command the agent invokes runs through `bin/sandbox-run.sh`, a layered wra
 - **R may be available in the sandbox without the SC stack.** Base R `readRDS` lets you inspect Seurat object slots / class / metadata columns / barcode formats WITHOUT installing the full Seurat/Signac/Bioconductor stack — useful for pre-flight diagnosis (catching multi-sample barcode suffixes, pre-existing reductions, unexpected assay layouts) before submitting a long SLURM run. Full coembed/pseudobulk pipelines belong on Mac/SLURM.
 - **Seurat v5 API breaking changes in R scripts.** `GetAssayData(slot=)` is defunct in SeuratObject ≥5.0.0 — use `layer=` (wrap in `tryCatch` to stay v4-compatible). `seqlevelsStyle(x) <- "UCSC"` in GenomeInfoDb triggers a network fetch from UCSC; HPC nodes without internet need a manual fallback (`seqlevels(x) <- ifelse(grepl("^chr", lvls), lvls, ifelse(lvls=="MT","chrM",paste0("chr",lvls)))`). R does NOT support implicit string concatenation — multi-line help text in `make_option()` must be a single string or use `paste0()`.
 - **`bgzip`/`tabix` are not in the taiji-agent conda env.** When pre-filtering fragments files, use `/stg3/data1/eunice/bin/miniconda3/envs/bcftools/bin/bgzip` and `../tabix`. Signac's `CreateFragmentObject` requires the `.tbi` index to exist but does not need bgzip on PATH.
+
+## Live analysis: ALTRA single-sample multiome (data/ALTRA/)
+
+A standalone R pipeline (`data/ALTRA/run_altra_signac.R`) that processes one paired scRNA-seq + scATAC-seq sample (GSM8554115/GSM8554140) end-to-end, replacing ArchR with Signac and following verbatim parameters from `Taiji_ALTRA/scripts/prepare_taiji_input.r` + `integration_rna.r`. Submitted via `data/ALTRA/submit_altra.sh` (SLURM, 6 CPUs, 100G).
+
+### Two-env SLURM split
+
+| Step | Env | Script |
+|------|-----|--------|
+| Convert pbmc_multimodal.h5seurat → RDS | `seuratdisk` (Seurat 4.1.1) | `prep_reference.R` |
+| Full analysis pipeline | `taiji-agent` (Seurat 5.5.0, Signac 1.17.1) | `run_altra_signac.R` |
+
+Only `prep_reference.R` needs `seuratdisk`. Everything else runs in `taiji-agent`.
+
+### Pipeline phases and checkpoints
+
+| Phase | What runs | Checkpoint (skips if exists) |
+|-------|-----------|------------------------------|
+| 1–4 | ATAC: peaks → QC → TFIDF+SVD → cluster | `GSM8554115_atac_qc.rds` |
+| 5 | RNA: SCT → PBMC reference label transfer (celltype.l2) | `*_labeled_v2.rds` |
+| 6 | Co-embed: GeneActivity → CCA → merge → joint PCA → clusters → uwot UMAP | `cluster_meta/*_cluster_identity.csv` |
+| 6b | Pre-coembedding UMAPs: RNA (ref.spca → UMAP, colored by celltype.l2) + ATAC (lsi.umap, colored by predicted.id) | `Pre_coembed_UMAPs.pdf` |
+| 7 | Pseudobulk: RNA GeneQuant TSVs + ATAC BED files per cluster | `pseudobulk/done.flag` |
+| 9 | Final UMAP: load coembed.rds → filter valid clusters → plot celltype.l2 | — |
+
+**Key outputs:**
+- `GSM8554115_coembed.rds` — co-embedded Seurat (RNA+ATAC, joint clusters, UMAP, celltype.l2)
+- `pseudobulk/` — `*_rna.tsv` (GeneQuant) + `*_atac.bed` per cluster; direct input to `build-taiji-input`
+- `Pre_coembed_UMAPs.pdf` — 2-panel: RNA UMAP (ref.spca, celltype.l2) + ATAC UMAP (lsi.umap, predicted.id)
+- `Final_coembed_UMAP.pdf` — final cell-type UMAP, co-embedded RNA+ATAC, valid clusters only (primary output)
+
+**Archived:** `archive/phase8_rna_integration.R` — Phase 8 was multi-sample batch-correction infrastructure (SketchData → ProjectIntegration → ProjectData → umap.full) adapted from `Taiji_ALTRA/scripts/integration_rna.r`. Removed because it does nothing for a single sample and produced a UMAP identical in shape to Phase 6's co-embedding UMAP.
+
+### Critical memory note
+
+When Phase 6 runs from scratch (not from checkpoint), it leaves large objects in memory: GeneActivity matrix (~15K × 19K), imputation object (~3K × 19K), coembed Seurat (~40K cells), plus transfer.anchors. Without explicit cleanup, Phase 7's `fread` of the 925 MB fragments file (~5 GB uncompressed) + Phase 8's ProjectData on 20K cells will OOM at 50G. **The script now calls `rm()` + `gc()` after Phase 6 (freeing those objects), after Phase 7 (freeing `frag_mat`), and after extracting `seurat_pbmc_type` from `q` before ProjectData.** SLURM allocation must be ≥100G.
+
+### Phase 6 coembed.rds contents
+
+`GSM8554115_coembed.rds` contains:
+- All RNA + ATAC cells (rownames prefixed `RNA_` / `ATAC_`)
+- `seurat_clusters` from joint Louvain (29 clusters before filtering, 25 pass minCell=20)
+- `umap` reduction (uwot UMAP, n_neighbors=40, min_dist=0.2, cosine) — **verbatim from prepare_taiji_input.r**
+- `celltype.l2` metadata column (PBMC reference labels, propagated from CCA transfer)
+- `assay_type` metadata column (RNA vs ATAC)
+
+n_neighbors=40/min_dist=0.2 affect only the visual layout; cluster membership comes from Louvain on PCA-based SNN, computed before UMAP.
 
 ## Not yet built (scoped but pending)
 
