@@ -7,13 +7,20 @@ ArchR-based single-cell pseudobulk Taiji pipeline following the [Wei Wang Lab AL
 ```bash
 git clone https://github.com/ejc043/taiji-agent_ALTRA.git
 cd taiji-agent_ALTRA
+claude
+```
 
-# Step 1 — create conda env (~20–40 min, one-time)
-micromamba create -f environment.altra.yml
+Then tell Claude:
 
-# Step 2 — install ArchR from GitHub (~5 min, one-time)
+```
+Set up the ALTRA environment
+```
+
+Claude will create the `taiji-agent-altra` conda environment (~20–40 min) and install ArchR (~5 min). Once done, activate and reopen:
+
+```bash
 micromamba activate taiji-agent-altra
-Rscript bin/postinstall_altra.R
+claude
 ```
 
 The EpiTensor HiC loop files are vendored in this repo — no download needed:

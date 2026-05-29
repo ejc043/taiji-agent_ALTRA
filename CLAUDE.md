@@ -2,6 +2,21 @@
 
 > **Operational QC and skill invocation guidance lives in `skills/CLAUDE.md`.** Read it before running any single-cell skill. It covers mandatory sc-qc checks, chooseR interpretation, and common failure modes found in live runs.
 
+## Environment setup
+
+When the user asks to **set up**, **make the environment**, **install dependencies**, or similar, run:
+
+```bash
+bash bin/setup_altra.sh
+```
+
+This script:
+1. Detects `micromamba` or `conda`
+2. Creates the `taiji-agent-altra` env from `environment.altra.yml` (skips if already exists)
+3. Runs `bin/postinstall_altra.R` inside the env to install ArchR from GitHub
+
+Report each step's output to the user as it runs. If the env already exists and ArchR is installed, confirm that and skip. If creation fails (missing micromamba, network error, etc.), surface the error clearly and suggest the fix.
+
 ## What this repo is
 
 A Python package + plugin-style skills bundle that wraps the [Taiji pipeline](https://github.com/Taiji-pipeline/Taiji) (Wei Wang lab, UCSD) for routine use on a SLURM HPC and on a Mac. The agent does not re-implement Taiji — it handles preflight validation, input construction, single-cell preprocessing, and submission so the user can hand it a directory of data and get a Taiji-ready run with minimal manual setup.
