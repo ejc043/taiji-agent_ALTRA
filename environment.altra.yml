@@ -25,13 +25,24 @@ dependencies:
   - bioconductor-biocgenerics
   - bioconductor-biocparallel
   - bioconductor-summarizedexperiment
-  - bioconductor-biocmanager  # needed by ArchR GitHub install
+  - r-biocmanager             # needed by ArchR GitHub install
   - r-remotes                 # installs ArchR from GitHub (see bin/postinstall_altra.R)
+  # ArchR GitHub deps that must be conda-installed (source compilation fails on HPC)
+  - bioconductor-motifmatchr  # ArchR Imports
+  - bioconductor-chromvar     # ArchR Imports
+  - r-devtools                # ArchR Imports (uses devtools::install_github internally)
   # ArchR itself is NOT on conda — installed via postinstall_altra.R after env creation
+  #
+  # ── GitHub-only R packages (not on conda; installed by postinstall_altra.R) ─
+  # SeuratData  remotes::install_github("satijalab/seurat-data")
+  #             + SeuratData::InstallData("pbmcref")
+  #             Provides Azimuth PBMC reference (pbmcref) for celltype.l2 label transfer.
+  #             Accessible after postinstall via: SeuratData::LoadData("pbmcref")
   # ── System libs ArchR needs ────────────────────────────────────────────────
   - cairo                  # required by ArchR's rastr/PDF plotting
   - libpng
   - zlib
+  - xz                     # provides lzma.h + liblzma.so needed to compile Rhtslib/VariantAnnotation from source
   # ── Tools Taiji calls at SLURM runtime ────────────────────────────────────
   - macs2>=2.2             # Taiji calls `macs2 callpeak` for ATAC peak calling
   - ucsc-bedgraphtobigwig  # Taiji calls `bedGraphToBigWig` for visualization tracks

@@ -16,7 +16,7 @@ Then tell Claude:
 Set up the ALTRA environment
 ```
 
-Claude will create the `taiji-agent-altra` conda environment (~20–40 min) and install ArchR (~5 min). Once done, activate and reopen:
+Claude will create the `taiji-agent-altra` conda environment (~20–40 min), install ArchR (~5 min), and install SeuratData + the Azimuth PBMC reference (`pbmcref`) for celltype.l2 label transfer. Once done, activate and reopen:
 
 ```bash
 micromamba activate taiji-agent-altra
@@ -37,10 +37,19 @@ The EpiTensor HiC loop files are vendored in this repo — no download needed:
 |---|---|
 | `fragments.tsv.gz` + `.tbi` | scATAC-seq fragment file (bgzipped, tabix-indexed) |
 | `<sample>_labeled.h5` | scRNA-seq in HISE HDF5 format |
-| `pbmc_reference.rds` | Seurat PBMC reference (converted from `pbmc_multimodal.h5seurat`, Platelet-filtered) |
-| `raw_individual_atac_metadata_backup.rds` | ATAC barcode whitelist with `PassQC` + `singlet` columns |
-| `raw_individual_rna_metadata_backup.rds` | RNA barcode metadata |
+| `pbmc_reference.rds` | Seurat PBMC reference — load via `SeuratData::LoadData("pbmcref")` or provide a pre-converted RDS |
 | Taiji binary | `bin/Taiji.1.2.0/taiji` (CentOS x86_64) |
+
+**PBMC reference options:**
+
+```r
+# Option A — SeuratData (installed by postinstall_altra.R):
+library(SeuratData)
+reference <- LoadData("pbmcref")
+
+# Option B — pre-converted RDS (from pbmc_multimodal.h5seurat):
+reference <- readRDS("data/ALTRA/pbmc_reference.rds")
+```
 
 ## Running on a new dataset
 
@@ -58,8 +67,6 @@ Run the ALTRA pseudobulk Taiji pipeline on my dataset.
   - ATAC fragments: data/<dataset>/<sample>_fragments.tsv.gz
   - RNA: data/<dataset>/<sample>_labeled.h5
   - PBMC reference: data/<dataset>/pbmc_reference.rds
-  - ATAC whitelist: backup_meta/raw_individual_atac_metadata_backup.rds (sample id: <your-atac-id>)
-  - RNA whitelist: backup_meta/raw_individual_rna_metadata_backup.rds (sample id: <your-rna-id>)
   - Genome: hg38
   - Output: data/<dataset>/taiji_run/
   Log everything.
