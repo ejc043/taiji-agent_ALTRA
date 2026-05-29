@@ -4,14 +4,41 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  # Python + packages needed by build/run scripts
+  # ── R runtime ──────────────────────────────────────────────────────────────
+  - r-base>=4.2
+  # ── R packages used directly in ALTRA scripts ─────────────────────────────
+  - r-seurat>=5.0          # Seurat reference transfer + DimPlot
+  - bioconductor-rhdf5     # read_h5_seurat_rhdf5: reads HISE HDF5 RNA files
+  - r-uwot                 # co-embedding UMAP (uwot::umap)
+  - r-matrix               # sparse matrix ops
+  - r-data.table           # fast fragment file reading (fread)
+  - r-ggplot2
+  - r-rcolorbrewer
+  - r-dplyr
+  - r-patchwork
+  # ── Bioconductor packages (TxDb + annotation — ArchR gene annotation) ──────
+  - bioconductor-txdb.hsapiens.ucsc.hg38.refgene
+  - bioconductor-org.hs.eg.db
+  - bioconductor-genomicranges
+  - bioconductor-genomicfeatures
+  - bioconductor-s4vectors
+  - bioconductor-biocgenerics
+  - bioconductor-biocparallel
+  - bioconductor-summarizedexperiment
+  - bioconductor-biocmanager  # needed by ArchR GitHub install
+  - r-remotes                 # installs ArchR from GitHub (see bin/postinstall_altra.R)
+  # ArchR itself is NOT on conda — installed via postinstall_altra.R after env creation
+  # ── System libs ArchR needs ────────────────────────────────────────────────
+  - cairo                  # required by ArchR's rastr/PDF plotting
+  - libpng
+  - zlib
+  # ── Tools Taiji calls at SLURM runtime ────────────────────────────────────
+  - macs2>=2.2             # Taiji calls `macs2 callpeak` for ATAC peak calling
+  - ucsc-bedgraphtobigwig  # Taiji calls `bedGraphToBigWig` for visualization tracks
+  - htslib>=1.17           # bgzip + tabix for .bed.gz fragment files
+  # ── Python packages for helper scripts ────────────────────────────────────
   - python>=3.10
-  - openpyxl>=3.1
+  - openpyxl>=3.1          # build_taiji_input_p1.py: reads/writes xlsx
   - pyyaml>=6.0
   - click>=8.0
   - pandas>=2.0
-  # Tools Taiji calls at runtime (must be in PATH for SLURM tasks)
-  - macs2>=2.2          # Taiji calls `macs2 callpeak` internally for ATAC peak calling
-  - ucsc-bedgraphtobigwig  # Taiji calls `bedGraphToBigWig` for ATAC visualization tracks
-  # Utilities for fragment file handling
-  - htslib>=1.17        # provides bgzip and tabix for .bed.gz indexing

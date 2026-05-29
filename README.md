@@ -192,29 +192,18 @@ A second, ArchR-based pipeline for scRNA-seq + scATAC-seq data that follows the 
 
 ### Additional setup (beyond the standard taiji-agent env)
 
-The ALTRA pipeline has two one-time setup steps:
-
-**1. Create the `taiji-agent-altra` conda environment**
-
-This provides `macs2`, `bedGraphToBigWig`, `openpyxl`, and `pyyaml` — everything Taiji and the helper scripts need:
+Create the `taiji-agent-altra` conda environment — this installs R, Seurat, all Bioconductor dependencies, `macs2`, `bedGraphToBigWig`, and the Python helper packages in one step. Then run the post-install script to pull ArchR from GitHub (the only dependency not on conda):
 
 ```bash
+# Step 1 — create env (~20–40 min, one-time)
 micromamba create -f environment.altra.yml
+
+# Step 2 — install ArchR itself from GitHub (~5 min, one-time)
 micromamba activate taiji-agent-altra
+Rscript bin/postinstall_altra.R
 ```
 
-**2. Singularity container + extra R libraries** *(one-time per machine)*
-
-The R/ArchR steps run inside `archr_1.0.3.sif`. Obtain the container and install two Bioconductor packages into a persistent R library outside the container:
-
-```bash
-# Install TxDb + org.Db into a local R library (do this once)
-singularity exec /path/to/archr_1.0.3.sif Rscript -e '
-  dir.create("/your/R_libs/archr_extra", recursive=TRUE, showWarnings=FALSE)
-  .libPaths("/your/R_libs/archr_extra")
-  BiocManager::install(c("TxDb.Hsapiens.UCSC.hg38.refGene", "org.Hs.eg.db"))
-'
-```
+No Singularity container required.
 
 The EpiTensor HiC loop files are **vendored in this repo** — no download needed:
 

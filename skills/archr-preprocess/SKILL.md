@@ -2,7 +2,7 @@
 
 Faithfully re-implements the ArchR preprocessing block from `Taiji_ALTRA/scripts/prepare_taiji_input.r` for a single scATAC-seq sample. Produces an ArchR project with IterativeLSI, UMAP, predicted cell-type labels from Seurat reference transfer, and a JointCCA co-embedding ready for pseudobulk construction.
 
-Runs inside `singularity exec archr_1.0.3.sif`.
+Runs inside the `taiji-agent-altra` conda environment (R + ArchR + Seurat — no Singularity required).
 
 ## Inputs
 
@@ -51,13 +51,14 @@ Runs inside `singularity exec archr_1.0.3.sif`.
 | `resolution` | 0.8 | FindClusters (clusKNN equivalent) |
 | `set.seed` | 10 (before clusKNN) | clusKNN |
 
-## Container requirements
+## Environment
 
-```
-singularity exec /stg3/data1/eunice/bin/containers/archr_1.0.3.sif Rscript run_archr_preprocess.R ...
+```bash
+micromamba activate taiji-agent-altra
+Rscript run_archr_preprocess.R ...
 ```
 
-Extra R libs needed (not in container): `TxDb.Hsapiens.UCSC.hg38.refGene`, `org.Hs.eg.db` — install to `--r-libs` path via `BiocManager::install()`.
+All R dependencies (ArchR, Seurat, TxDb, org.Hs.eg.db, rhdf5, uwot) are installed via `environment.altra.yml` + `bin/postinstall_altra.R`. No Singularity container required.
 
 ## Deviations from original (unavoidable)
 
