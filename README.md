@@ -192,22 +192,28 @@ A second, ArchR-based pipeline for scRNA-seq + scATAC-seq data that follows the 
 
 ### Additional setup (beyond the standard taiji-agent env)
 
-The ALTRA pipeline runs inside a **Singularity container** and calls tools not in the micromamba env:
+The ALTRA pipeline has two one-time setup steps:
+
+**1. Create the `taiji-agent-altra` conda environment**
+
+This provides `macs2`, `bedGraphToBigWig`, `openpyxl`, and `pyyaml` — everything Taiji and the helper scripts need:
 
 ```bash
-# 1. Singularity container — contains ArchR 1.0.3, Seurat 5.3.0, rhdf5, uwot
-#    Obtain archr_1.0.3.sif and place it somewhere accessible on the HPC.
+micromamba create -f environment.altra.yml
+micromamba activate taiji-agent-altra
+```
 
-# 2. Extra R libraries (TxDb + org.Db packages; not in container)
+**2. Singularity container + extra R libraries** *(one-time per machine)*
+
+The R/ArchR steps run inside `archr_1.0.3.sif`. Obtain the container and install two Bioconductor packages into a persistent R library outside the container:
+
+```bash
+# Install TxDb + org.Db into a local R library (do this once)
 singularity exec /path/to/archr_1.0.3.sif Rscript -e '
+  dir.create("/your/R_libs/archr_extra", recursive=TRUE, showWarnings=FALSE)
   .libPaths("/your/R_libs/archr_extra")
   BiocManager::install(c("TxDb.Hsapiens.UCSC.hg38.refGene", "org.Hs.eg.db"))
 '
-
-# 3. macs2 and bedGraphToBigWig must be in PATH for Taiji SLURM tasks
-#    Verify:
-which macs2          # e.g. /path/to/envs/macs3/bin/macs2
-which bedGraphToBigWig
 ```
 
 The EpiTensor HiC loop files are **vendored in this repo** — no download needed:
