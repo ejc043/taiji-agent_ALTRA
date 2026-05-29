@@ -37,19 +37,9 @@ The EpiTensor HiC loop files are vendored in this repo — no download needed:
 |---|---|
 | `fragments.tsv.gz` + `.tbi` | scATAC-seq fragment file (bgzipped, tabix-indexed) |
 | `<sample>_labeled.h5` | scRNA-seq in HISE HDF5 format |
-| `pbmc_reference.rds` | Seurat PBMC reference — load via `SeuratData::LoadData("pbmcref")` or provide a pre-converted RDS |
 | Taiji binary | `bin/Taiji.1.2.0/taiji` (CentOS x86_64) |
 
-**PBMC reference options:**
-
-```r
-# Option A — SeuratData (installed by postinstall_altra.R):
-library(SeuratData)
-reference <- LoadData("pbmcref")
-
-# Option B — pre-converted RDS (from pbmc_multimodal.h5seurat):
-reference <- readRDS("data/ALTRA/pbmc_reference.rds")
-```
+The Azimuth PBMC reference (`pbmcref`) is downloaded automatically during `Set up the ALTRA environment` via `SeuratData::InstallData("pbmcref")` — no manual download needed.
 
 ## Running on a new dataset
 
@@ -66,7 +56,6 @@ Then prompt Claude:
 Run the ALTRA pseudobulk Taiji pipeline on my dataset.
   - ATAC fragments: data/<dataset>/<sample>_fragments.tsv.gz
   - RNA: data/<dataset>/<sample>_labeled.h5
-  - PBMC reference: data/<dataset>/pbmc_reference.rds
   - Genome: hg38
   - Output: data/<dataset>/taiji_run/
   Log everything.
