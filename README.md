@@ -1,6 +1,6 @@
 # taiji-agent_ALTRA
 
-ArchR-based single-cell pseudobulk Taiji pipeline following the [Wei Wang Lab ALTRA workflow]([https://github.com/Taiji-pipeline/Taiji_ALTRA](https://github.com/Wang-lab-UCSD/Taiji_ALTRA/tree/main)). Designed for separate-assay scRNA-seq + scATAC-seq from the same donors, using ArchR co-clustering to define pseudobulk groups and feeding raw fragment BEDs directly to Taiji (which calls peaks internally).
+ArchR-based single-cell pseudobulk Taiji pipeline following the [Wei Wang Lab ALTRA workflow](https://github.com/Wang-lab-UCSD/Taiji_ALTRA/tree/main). Designed for separate-assay scRNA-seq + scATAC-seq from the same donors, using ArchR co-clustering to define pseudobulk groups and feeding raw fragment BEDs directly to Taiji (which calls peaks internally).
 
 ## Installation
 
