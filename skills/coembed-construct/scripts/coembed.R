@@ -485,12 +485,25 @@ message(sprintf(
   "seurat_clusters" %in% colnames(atac@meta.data)
 ))
 
+# A pre-built "RNA" assay (gene activity) on the ATAC object lets us run the
+# CCA-anchor path WITHOUT fragments (Stage 3 reuses it as query.assay="RNA"
+# and never calls GeneActivity). In that case both the fragments handle and
+# the EnsDb annotation are unnecessary, so skip them. This supports ATAC
+# objects built from a peak x cell count matrix with no fragments file.
+atac_has_prebuilt_rna <- "RNA" %in% Assays(atac)
+
 # Repair stale fragments path BEFORE GeneActivity / annotation. If the
 # .rds was built on a different machine, the embedded path in each
 # Fragment object is absolute and will not resolve here. GeneActivity()
-# would fail ~10 min in with an opaque tabix error.
-atac <- repair_fragments(atac, atac_assay,
-                         fragments_override = opt$fragments)
+# would fail ~10 min in with an opaque tabix error. Skipped when a
+# pre-built "RNA" assay is present (no GeneActivity, no fragments needed).
+if (!atac_has_prebuilt_rna) {
+  atac <- repair_fragments(atac, atac_assay,
+                           fragments_override = opt$fragments)
+} else {
+  message("[coembed]   ATAC has pre-built 'RNA' (gene activity) assay; ",
+          "skipping fragments check (GeneActivity not needed).")
+}
 
 # Some ATAC objects (e.g. those from prior integrate_atac runs, or split
 # multiome objects) already carry an "RNA" assay. We're going to overwrite
@@ -579,6 +592,9 @@ if (Sys.info()[["sysname"]] == "Darwin") {
 
 # Annotation pull for GeneActivity. Signac wants UCSC-style chromosome names
 # and a `genome` attribute on the GRanges; this is what the vignette does.
+# Skipped entirely when a pre-built "RNA" assay is present, since GeneActivity
+# (the only consumer of this annotation) won't run and EnsDb may be absent.
+if (!atac_has_prebuilt_rna) {
 ensdb <- load_ensdb(opt$genome)
 message("[coembed] pulling gene annotations from EnsDb (", opt$genome, ") ...")
 annotations <- GetGRangesFromEnsDb(ensdb = ensdb)
@@ -597,6 +613,10 @@ tryCatch(
 )
 genome(annotations) <- opt$genome
 Annotation(atac) <- annotations
+} else {
+  message("[coembed]   skipping EnsDb annotation pull (pre-built 'RNA' assay; ",
+          "GeneActivity not needed).")
+}
 
 # Reuse path for ATAC: skip TF-IDF/SVD/UMAP if reductions already there.
 # We accept either umap.atac (the Stuart vignette name) or the bare
