@@ -33,6 +33,9 @@ SCRIPT_DIR = Path(__file__).resolve().parent
 R_LOAD_AND_CLUSTER = SCRIPT_DIR / "load_and_cluster.R"
 R_AGGREGATE_RNA = SCRIPT_DIR / "aggregate_rna.R"
 R_CALL_PEAKS = SCRIPT_DIR / "call_peaks.R"
+R_MAKE_TPM = SCRIPT_DIR / "make_tpm.R"
+GENOMES_YML = (SCRIPT_DIR.parent.parent / "build-taiji-input" / "assets"
+               / "genomes.yml")
 
 
 def _attach_log():
@@ -83,8 +86,28 @@ def _summarize_run(args, gate: dict, groups: list[dict],
         "coembedding_required": gate.get("sc_modality") == "separate-assay",
         "gate_classification":  gate.get("classification"),
         "gate_sc_modality":     gate.get("sc_modality"),
+        "rna_units":         args.rna_units,
+        **({"gtf": str(args.gtf)} if args.rna_units == "tpm" else {}),
         **({"peak_stats": peak_stats} if peak_stats else {}),
     }
+
+
+def resolve_gtf(user_gtf: Path | None, genome: str) -> Path | None:
+    """Pick the GTF for TPM gene lengths: --gtf if given, else the `gtf`
+    entry for --genome in build-taiji-input's genomes.yml (the same file
+    fetch-references --update-genomes-yml writes). Returns None if neither
+    resolves to an existing file."""
+    if user_gtf is not None:
+        return user_gtf if user_gtf.exists() else None
+    try:
+        import yaml
+        entry = (yaml.safe_load(GENOMES_YML.read_text()) or {}).get(genome) or {}
+    except Exception:
+        return None
+    gtf = entry.get("gtf")
+    if gtf and Path(gtf).exists():
+        return Path(gtf)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -372,6 +395,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--peak-caller", choices=["macs2", "macs3"], default=None,
                    help="Peak caller binary. Default: auto-detect (prefers "
                         "macs3, then macs2, whichever is on PATH).")
+    p.add_argument("--rna-units", choices=["tpm", "counts"], default="tpm",
+                   help="Units of the Taiji-facing RNA TSVs in rna/. 'tpm' "
+                        "(default) sums raw counts into rna_counts/ and "
+                        "converts them to TPM in rna/ using union-exon gene "
+                        "lengths from --gtf. 'counts' writes raw summed "
+                        "counts straight to rna/.")
+    p.add_argument("--gtf", type=Path, default=None,
+                   help="GTF for TPM gene lengths. Default: the gtf entry "
+                        "for --genome in build-taiji-input/assets/genomes.yml. "
+                        "Must match the annotation the single-cell counts "
+                        "were built on (e.g. the cellranger refdata GTF).")
     p.add_argument("--rna-only", action="store_true",
                    help="Skip ATAC peak calling even if fragments are supplied.")
     p.add_argument("--atac-only", action="store_true",
@@ -489,6 +523,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  peak caller         : {args.peak_caller}", file=sys.stderr)
         print(f"  rna-only / atac-only: {args.rna_only} / {args.atac_only}",
               file=sys.stderr)
+        print(f"  rna units           : {args.rna_units}", file=sys.stderr)
+        if args.rna_units == "tpm" and not args.atac_only:
+            print(f"  gtf (TPM lengths)   : "
+                  f"{resolve_gtf(args.gtf, args.genome) or 'UNRESOLVED'}",
+                  file=sys.stderr)
         print("[pseudobulk] --dry-run: skipping all R + MACS invocations.",
               file=sys.stderr)
         return 0
@@ -504,6 +543,23 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 3
+
+    # TPM needs a GTF; resolve it now so a missing one fails before the
+    # (long) clustering step rather than after it.
+    if args.rna_units == "tpm" and not args.atac_only:
+        gtf = resolve_gtf(args.gtf, args.genome)
+        if gtf is None:
+            why = (f"--gtf {args.gtf} does not exist" if args.gtf else
+                   f"no existing gtf is set for {args.genome} in {GENOMES_YML}")
+            print(
+                f"ERROR: --rna-units tpm needs a GTF for gene lengths, but "
+                f"{why}. "
+                "Pass --gtf <path> (the annotation the counts were built on), "
+                "or --rna-units counts to keep raw counts.",
+                file=sys.stderr,
+            )
+            return 3
+        args.gtf = gtf
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -540,15 +596,26 @@ def main(argv: list[str] | None = None) -> int:
 
     groups: list[dict] = plan["groups"]
 
-    # 5. RNA aggregation (R-side): writes rna/<name>.tsv per group.
+    # 5. RNA aggregation (R-side). rna/<name>.tsv is always the Taiji-facing
+    #    file. With --rna-units tpm (default), raw sums go to rna_counts/ and
+    #    make_tpm.R converts them into rna/; with counts, sums go to rna/.
     if not args.atac_only:
+        counts_dir = args.output_dir / (
+            "rna_counts" if args.rna_units == "tpm" else "rna")
         run_rscript(
             R_AGGREGATE_RNA,
             "--input", str(args.input),
             "--clusters", str(args.output_dir / "clusters.csv"),
             "--groups", str(plan_path),
-            "--output-dir", str(args.output_dir / "rna"),
+            "--output-dir", str(counts_dir),
         )
+        if args.rna_units == "tpm":
+            run_rscript(
+                R_MAKE_TPM,
+                "--gtf", str(args.gtf),
+                "--counts-dir", str(counts_dir),
+                "--output-dir", str(args.output_dir / "rna"),
+            )
         for g in groups:
             g["rna_seq"] = str(args.output_dir / "rna" / f"{g['name']}.tsv")
 

@@ -1,6 +1,6 @@
 ---
 name: pseudobulk-construct
-description: Convert a single-cell object (.rds Seurat or .h5ad AnnData) into pseudobulk GeneQuant TSVs + per-cluster narrowPeak files that feed the bulk Taiji pipeline. Use this skill whenever the user wants to pseudobulk, aggregate, collapse, summarize, or bulk-ify a single-cell dataset — especially before handing off to build-taiji-input. Runs Seurat WNN clustering with scale-aware resolution tuning (targeting ~100-300 cells/cluster, adjusted for total cell count), filters small clusters (<20 RNA cells or <20 ATAC cells when assays are separate; <20 cells when paired), sums raw counts per (cluster × metadata) combination for RNA, and calls MACS2 peaks per cluster for ATAC. Trigger on phrases like "pseudobulk this", "construct pseudobulks", "cluster and aggregate", "collapse single cell to bulk", "make the scRNA bulk-compatible", "per-cluster peaks", "prep this for Taiji from single cell", or anywhere the user needs to bridge SC → bulk Taiji.
+description: Convert a single-cell object (.rds Seurat or .h5ad AnnData) into pseudobulk GeneQuant TSVs + per-cluster narrowPeak files that feed the bulk Taiji pipeline. Use this skill whenever the user wants to pseudobulk, aggregate, collapse, summarize, or bulk-ify a single-cell dataset — especially before handing off to build-taiji-input. Runs Seurat WNN clustering with scale-aware resolution tuning (targeting ~100-300 cells/cluster, adjusted for total cell count), filters small clusters (<20 RNA cells or <20 ATAC cells when assays are separate; <20 cells when paired), sums raw counts per (cluster × metadata) combination for RNA and converts them to TPM (default), and calls MACS2 peaks per cluster for ATAC. Trigger on phrases like "pseudobulk this", "construct pseudobulks", "cluster and aggregate", "collapse single cell to bulk", "make the scRNA bulk-compatible", "per-cluster peaks", "prep this for Taiji from single cell", or anywhere the user needs to bridge SC → bulk Taiji.
 ---
 
 # Pseudobulk construction (scRNA + scATAC → bulk Taiji inputs)
@@ -12,8 +12,10 @@ Given a single-cell object and (for ATAC) a fragments file, emit per-cluster × 
 ```
 output_dir/
 ├── rna/
-│   ├── <cluster>__<metadata_col>__<value>.tsv         # gene_id<TAB>count
+│   ├── <cluster>__<metadata_col>__<value>.tsv         # gene_id<TAB>TPM (default; raw counts with --rna-units counts)
+│   ├── tpm_summary.json                               # GTF used, gene key, unmatched genes per file
 │   └── ...
+├── rna_counts/                                        # raw summed counts (TPM mode only)
 ├── atac/
 │   ├── <cluster>__<metadata_col>__<value>_peaks.narrowPeak
 │   └── ...
@@ -67,6 +69,8 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 | `--transferred-label-col`   | Column in `@meta.data` that holds Signac-transferred labels for separate-assay. Default: `predicted.id`. |
 | `--peak-caller`             | `macs2` or `macs3`. Auto-detected from PATH (prefers macs3); pseudobulk.py resolves the full binary path and passes it to Signac::CallPeaks via `macs2.path`. |
 | `--skip-data-type-check`    | Bypass the detect-dataset-type pre-flight (use only if you know the input is SC).     |
+| `--rna-units`               | `tpm` (default) or `counts`. With `tpm`, raw sums go to `rna_counts/` and `rna/` gets TPM computed from union-exon gene lengths. See `references/output_format.md`. |
+| `--gtf`                     | GTF for TPM gene lengths. Use the annotation the counts were built on (for 10x data, cellranger `refdata-*/genes/genes.gtf`). Default: the `gtf` entry for `--genome` in `build-taiji-input/assets/genomes.yml`. If it doesn't resolve, the run fails before clustering. |
 | `--rna-only` / `--atac-only`| Restrict output to a single modality (useful for RNA-only scRNA objects).             |
 | `--dry-run`                 | Print the resolved plan (input, signal, gate, cohort col, peak caller, etc.) and exit cleanly. **No R or MACS invocations** — safe to run before submitting a long SLURM job to validate wiring. |
 | `--no-plot`                 | Skip the QC UMAP rendering. Default: write `qc/umap.png` (panels for clusters, `assay` if co-embedded, each metadata col) plus `qc/umap_coords.csv`. |
@@ -77,7 +81,7 @@ The `manifest.tsv` is the bridge: each row is one (cluster × metadata_value) "s
 This skill is not self-contained — it shells out to R and MACS2. The Python entry point checks these at startup and emits a clear error if they're missing:
 
 - `Rscript` ≥ 4.2 on `PATH`.
-- R packages: `Seurat` ≥ 5.0, `Signac` ≥ 1.12 (for ATAC), `Matrix`, `GenomicRanges`, `dplyr`. For `.h5ad` input: `SeuratDisk` or `anndata` + `sceasy`.
+- R packages: `Seurat` ≥ 5.0, `Signac` ≥ 1.12 (for ATAC), `Matrix`, `GenomicRanges`, `rtracklayer` (TPM GTF import), `dplyr`. For `.h5ad` input: `SeuratDisk` or `anndata` + `sceasy`.
 - `macs2` (or `macs3`) on `PATH`.
 - `tabix` / `bgzip` available if fragments need to be subsetted.
 
@@ -108,5 +112,5 @@ On the user's SLURM environment these are typically loaded via `module load r/4.
 - **Scale-aware resolution**: the user pointed out that targeting a fixed ~200 cells/cluster with a naïve default-0.8 Louvain step won't work for a 1M-cell atlas (you'd get ~100 clusters that are each ~10k cells) or a 5k-cell pilot (you'd get 4 clusters of ~1200 each). The binary search seeds the initial resolution from N_cells / target_cluster_size and narrows from there; see `references/clustering_strategy.md` for the formula.
 - **WNN over single-modality clustering for multiome**: this is the standard Seurat v5 recommendation for paired RNA+ATAC data. It gives noticeably better separation of rare cell types than clustering on either modality alone, at the cost of ~2× runtime for `FindMultiModalNeighbors`.
 - **Hard 20-cell floor, no soft option**: peaks called from <20 cells are dominated by noise; summed counts from <20 cells are too sparse to be a meaningful "bulk" sample. Lowering the floor would silently degrade the quality of downstream Taiji.
-- **Sum raw counts, not normalized**: bulk RNA-seq tools expect raw counts. Summing normalized values is never the right move.
+- **Sum raw counts, then convert to TPM**: the pseudobulk is always built by summing raw counts, because summing normalized values is never right. The Taiji-facing file is then converted to TPM so that RNA values are length-normalized and comparable across groups with different depths. This is the convention the MARCH and CIMA runs established. The raw sums are kept in `rna_counts/`, and `--rna-units counts` restores the old behavior.
 - **Per-cluster Signac::CallPeaks, not global peaks + subset counting**: calling peaks on each pseudobulk individually catches cluster-specific regulatory elements that would be smoothed out by a single global call. It's the slower path but the biologically correct one. Going through Signac (instead of a direct gunzip|awk|macs pipe) buys us proper per-group `CreateFragmentObject` plumbing and per-group barcode reconciliation against `fragments.tsv.gz` — Seurat objects often carry suffixes (`AAACGCT-1`, `ATAC_AAACGCT`) that the raw 10x fragments file doesn't, and `call_peaks.R` strips them automatically (≥95% overlap required after correction, fail-loud otherwise).

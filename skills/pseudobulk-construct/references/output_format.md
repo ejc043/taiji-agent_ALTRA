@@ -13,10 +13,13 @@ output_dir/
 │   ├── cluster0.txt                    # barcodes (one per line) used for peak calling
 │   ├── cluster0__donor__D1.txt
 │   └── ...
-├── rna/
-│   ├── cluster0__donor__D1.tsv         # gene_id<TAB>count, no header
-│   ├── cluster0__donor__D2.tsv
+├── rna_counts/                         # only with --rna-units tpm (default)
+│   ├── cluster0__donor__D1.tsv         # gene_id<TAB>count, no header (raw sums)
 │   └── _index.json                     # machine-readable map of group -> TSV path
+├── rna/                                # Taiji-facing; what manifest rna_seq points at
+│   ├── cluster0__donor__D1.tsv         # gene_id<TAB>tpm (default) or <TAB>count
+│   ├── cluster0__donor__D2.tsv
+│   └── tpm_summary.json                # TPM mode: GTF, gene key, unmatched genes per file
 ├── atac/
 │   ├── cluster0__donor__D1_peaks.narrowPeak
 │   ├── cluster0__donor__D1_summits.bed
@@ -59,6 +62,23 @@ ENSMUSG00000000028	117
 ```
 
 Two columns, tab-separated, no header. Gene IDs are whatever was in the Seurat object's `rownames(counts)` — typically Ensembl IDs from cellranger. Counts are 32-bit integer sums of the raw (unnormalized) per-cell counts across the group's cells.
+
+### TPM (default: `--rna-units tpm`)
+
+`rna/<name>.tsv` holds TPM, rounded to 4 decimals, in the same two-column layout. The raw sums stay in `rna_counts/`. `make_tpm.R` does the conversion:
+
+- **Gene length** is the union-exon length from `--gtf`: the exons of all transcripts are merged with `GenomicRanges::reduce` and the widths summed.
+- **TPM** is `(count/len) / sum(count/len) * 1e6` over genes with a length. This is the same formula as `DGEobj.utils::convertCounts(unit="TPM")`, which the MARCH / CIMA runs used, so the output matches those runs exactly.
+- **Gene key.** Lengths are indexed by both `gene_name` and `gene_id` (version suffix stripped). The key that matches more of the input genes is used.
+- **Unmatched genes** are written with TPM 0. The share of unmatched genes and the fraction of counts they held are recorded per file in `rna/tpm_summary.json`. A typical cellranger GRCh38-2020-A object leaves about 5% of genes unmatched (about 1% of counts), mostly Seurat's `make.unique` duplicates like `TBCE.1`. If fewer than 50% of genes match, the run fails, because that almost always means the wrong GTF.
+- **Use the same annotation the counts came from.** For 10x data that is the cellranger `refdata-*/genes/genes.gtf`. If `--gtf` isn't given, the skill falls back to the `gtf` entry for `--genome` in `build-taiji-input/assets/genomes.yml`.
+
+To convert an existing counts directory by hand, run:
+
+```bash
+Rscript skills/pseudobulk-construct/scripts/make_tpm.R \
+  --gtf <genes.gtf> --counts-dir <dir_of_count_tsvs> --output-dir <tpm_dir>
+```
 
 If your Seurat object uses gene symbols instead of Ensembl IDs, the TSV will have symbols — which will flow through `build-taiji-input` and into bulk Taiji as-is. Confirm the downstream genome annotation matches (Taiji's GENCODE gtf needs to use the same identifier space).
 

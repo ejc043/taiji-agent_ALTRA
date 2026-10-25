@@ -43,6 +43,7 @@ dependencies:
   - r-signac>=1.12      # bioconda package name is `r-signac`, NOT `bioconductor-signac`
   - r-matrix
   - bioconductor-genomicranges
+  - bioconductor-rtracklayer          # GTF import for pseudobulk TPM
   - r-dplyr
   - r-optparse
   - r-jsonlite

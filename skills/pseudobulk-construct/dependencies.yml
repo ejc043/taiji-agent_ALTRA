@@ -32,6 +32,8 @@ r_packages:
      conda_pkg: "r-signac"}    # bioconda packages it as r-signac, NOT bioconductor-signac
   - {name: Matrix,                              source: "conda"}
   - {name: GenomicRanges,                       source: "bioconda"}
+  - {name: rtracklayer,                         source: "bioconda",
+     conda_pkg: "bioconductor-rtracklayer"}    # GTF import for --rna-units tpm
   - {name: dplyr,                               source: "conda"}
   - {name: optparse,                            source: "conda"}
   - {name: jsonlite,                            source: "conda"}

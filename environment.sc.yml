@@ -26,6 +26,7 @@ dependencies:
   # ---- Supporting R packages ----
   - r-matrix
   - bioconductor-genomicranges
+  - bioconductor-rtracklayer          # GTF import for pseudobulk TPM
   - r-dplyr
   - r-optparse
   - r-jsonlite
